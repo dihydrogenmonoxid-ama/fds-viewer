@@ -1,4 +1,4 @@
-&HEAD CHID='sample_room_fire', TITLE='Sample Room Fire - FDS Geometry Viewer Demo' /
+&HEAD CHID='sample_room_fire', TITLE='Sample Room Fire - FDS Viewer Demo' /
 
 &TIME T_END=600.0 /
 

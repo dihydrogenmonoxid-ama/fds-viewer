@@ -4,7 +4,7 @@
  *
  * Source: examples/sample_room_fire.fds — keep the two in sync if edited.
  */
-const SAMPLE_FDS_TEXT = `&HEAD CHID='sample_room_fire', TITLE='Sample Room Fire - FDS Geometry Viewer Demo' /
+const SAMPLE_FDS_TEXT = `&HEAD CHID='sample_room_fire', TITLE='Sample Room Fire - FDS Viewer Demo' /
 
 &TIME T_END=600.0 /
 

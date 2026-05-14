@@ -1,6 +1,6 @@
 @echo off
 REM ============================================================
-REM  FDS Geometry Viewer - local HTTP server
+REM  FDS Viewer - local HTTP server
 REM  Project Lead: Prof Rino Lovreglio - Massey University
 REM  Disclaimer:   No responsibility is taken for the use or
 REM                output of these tools. Independently verify
@@ -31,7 +31,7 @@ REM at the repo regardless of where it was launched from.
 cd /d "%~dp0"
 
 echo ============================================
-echo  FDS Geometry Viewer - HTTP server
+echo  FDS Viewer - HTTP server
 echo  Repo root:  %CD%
 echo  Open in browser:
 echo    http://localhost:%PORT%/

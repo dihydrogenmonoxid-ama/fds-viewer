@@ -1,4 +1,4 @@
-# FDS Geometry Viewer
+# FDS Viewer
 
 A browser-based 3D previewer for **Fire Dynamics Simulator (FDS)** input files.
 Drop in any `.fds` file and inspect meshes, obstructions, vents, holes,
@@ -6,7 +6,7 @@ devices, slice planes, fire sources and HVAC networks **before** launching a
 multi-hour FDS simulation — catching geometry errors in seconds instead of
 after a failed run.
 
-![FDS Geometry Viewer demo](assets/demo.gif)
+![FDS Viewer demo](assets/demo.gif)
 
 > **Project Lead:** Prof Rino Lovreglio, PhD — Massey University
 >
@@ -120,5 +120,5 @@ MIT — see [LICENSE](LICENSE).
 
 If you use this tool in published work, please cite:
 
-> Lovreglio, R. *FDS Geometry Viewer*. Massey University.
+> Lovreglio, R. *FDS Viewer*. Massey University.
 > https://github.com/<user>/<repo>
