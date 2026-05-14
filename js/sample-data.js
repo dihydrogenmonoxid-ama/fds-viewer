@@ -1,0 +1,104 @@
+/**
+ * Bundled sample FDS input — embedded as a JS string so the "Load Sample"
+ * button works without an HTTP server (browsers block fetch() on file://).
+ *
+ * Source: examples/sample_room_fire.fds — keep the two in sync if edited.
+ */
+const SAMPLE_FDS_TEXT = `&HEAD CHID='sample_room_fire', TITLE='Sample Room Fire - FDS Geometry Viewer Demo' /
+
+&TIME T_END=600.0 /
+
+&MISC SURF_DEFAULT='CONCRETE' /
+
+! Computational mesh
+&MESH ID='Mesh1', IJK=60,40,30, XB=0.0,6.0,0.0,4.0,0.0,3.0 /
+
+! Combustion reaction - flexible polyurethane foam (SFPE Handbook standard values)
+&REAC ID='POLYURETHANE',
+      FUEL='POLYURETHANE',
+      C=6.3, H=7.1, O=2.1, N=1.0,
+      SOOT_YIELD=0.10,
+      CO_YIELD=0.024,
+      HEAT_OF_COMBUSTION=17000. /
+
+! Surface definitions
+&SURF ID='CONCRETE', COLOR='GRAY', MATL_ID='CONCRETE', THICKNESS=0.2 /
+&SURF ID='WOOD', COLOR='SANDY BROWN', MATL_ID='WOOD', THICKNESS=0.025 /
+! Design fire: NFPA 'medium' t-squared growth (alpha = 0.0117 kW/s^2),
+! peak HRR 1055 kW reached at t = 300 s over the 0.4 x 0.4 m burner area.
+&SURF ID='BURNER', COLOR='RED',
+      HRRPUA=6594.0,
+      TAU_Q=-300.0 /
+&SURF ID='GLASS', COLOR='LIGHT BLUE', TRANSPARENCY=0.3 /
+&SURF ID='STEEL', COLOR='SILVER' /
+
+! Material definitions
+&MATL ID='CONCRETE', DENSITY=2300., CONDUCTIVITY=1.8, SPECIFIC_HEAT=1.04 /
+&MATL ID='WOOD', DENSITY=450., CONDUCTIVITY=0.14, SPECIFIC_HEAT=2.85 /
+
+! Room walls
+! Floor
+&OBST XB=0.0,6.0,0.0,4.0,0.0,0.0, SURF_ID='CONCRETE', COLOR='GRAY' /
+
+! Back wall
+&OBST XB=0.0,6.0,0.0,0.0,0.0,3.0, SURF_ID='CONCRETE', COLOR='BEIGE' /
+
+! Front wall (with door opening)
+&OBST XB=0.0,1.5,4.0,4.0,0.0,3.0, SURF_ID='CONCRETE', COLOR='BEIGE' /
+&OBST XB=2.5,6.0,4.0,4.0,0.0,3.0, SURF_ID='CONCRETE', COLOR='BEIGE' /
+&OBST XB=1.5,2.5,4.0,4.0,2.1,3.0, SURF_ID='CONCRETE', COLOR='BEIGE' /
+
+! Left wall (with window)
+&OBST XB=0.0,0.0,0.0,4.0,0.0,0.8, SURF_ID='CONCRETE', COLOR='BEIGE' /
+&OBST XB=0.0,0.0,0.0,4.0,2.2,3.0, SURF_ID='CONCRETE', COLOR='BEIGE' /
+&OBST XB=0.0,0.0,0.0,1.0,0.8,2.2, SURF_ID='CONCRETE', COLOR='BEIGE' /
+&OBST XB=0.0,0.0,3.0,4.0,0.8,2.2, SURF_ID='CONCRETE', COLOR='BEIGE' /
+
+! Right wall
+&OBST XB=6.0,6.0,0.0,4.0,0.0,3.0, SURF_ID='CONCRETE', COLOR='BEIGE' /
+
+! Ceiling
+&OBST XB=0.0,6.0,0.0,4.0,3.0,3.0, SURF_ID='CONCRETE', COLOR='WHITE' /
+
+! Window glass (left wall)
+&OBST XB=0.0,0.0,1.0,3.0,0.8,2.2, SURF_ID='GLASS', COLOR='LIGHT BLUE', TRANSPARENCY=0.3 /
+
+! Furniture - Table
+&OBST XB=3.5,5.0,1.2,2.8,0.0,0.75, SURF_ID='WOOD', COLOR='SANDY BROWN' /
+
+! Furniture - Desk
+&OBST XB=1.0,2.5,0.3,1.2,0.0,0.75, SURF_ID='WOOD', COLOR='BROWN' /
+
+! Furniture - Bookshelf
+&OBST XB=5.2,5.8,0.2,0.5,0.0,2.0, SURF_ID='WOOD', COLOR='BROWN' /
+
+! Furniture - Cabinet
+&OBST XB=0.3,1.0,3.2,3.8,0.0,1.0, SURF_ID='STEEL', COLOR='SILVER' /
+
+! Sofa
+&OBST XB=3.5,5.0,0.2,0.8,0.0,0.45, SURF_ID='WOOD', COLOR='DARK RED' /
+&OBST XB=3.5,5.0,0.2,0.35,0.45,0.9, SURF_ID='WOOD', COLOR='DARK RED' /
+
+! Fire source
+&VENT XB=2.0,2.4,1.5,1.9,0.0,0.0, SURF_ID='BURNER', COLOR='RED' /
+
+! Door opening
+&HOLE XB=1.5,2.5,3.95,4.05,0.0,2.1 /
+
+! Supply vent (HVAC)
+&VENT XB=1.0,2.0,0.0,0.0,2.4,2.8, SURF_ID='STEEL', COLOR='SILVER' /
+
+! Exhaust vent
+&VENT XB=4.5,5.5,0.0,0.0,2.4,2.8, SURF_ID='STEEL', COLOR='DARK CYAN' /
+
+! Open boundary at door
+&VENT XB=1.5,2.5,4.0,4.0,0.0,2.1, SURF_ID='OPEN' /
+
+! Devices
+&DEVC ID='Temp_Center', XYZ=3.0,2.0,2.5, QUANTITY='TEMPERATURE' /
+&DEVC ID='Temp_Door', XYZ=2.0,3.8,2.0, QUANTITY='TEMPERATURE' /
+&DEVC ID='Smoke_Detector', XYZ=3.0,2.0,2.95, QUANTITY='VISIBILITY' /
+&DEVC ID='HRR_Device', XYZ=2.2,1.7,0.1, QUANTITY='HRRPUV' /
+
+&TAIL /
+`;

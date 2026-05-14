@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FDS Geometry Viewer</title>
+    <!-- Inline SVG favicon (no extra file to ship). Stylised box/wireframe. -->
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23e94560' stroke-width='2'%3E%3Cpath d='M12 2L2 7l10 5 10-5-10-5z'/%3E%3Cpath d='M2 17l10 5 10-5'/%3E%3Cpath d='M2 12l10 5 10-5'/%3E%3C/svg%3E">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- Top Bar -->
+    <div class="top-bar">
+        <div class="logo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                <path d="M2 17l10 5 10-5"/>
+                <path d="M2 12l10 5 10-5"/>
+            </svg>
+            FDS Viewer
+        </div>
+        <div class="file-info">
+            <span id="filename-display">No file loaded</span>
+            <span id="model-title"></span>
+        </div>
+        <div class="page-tabs">
+            <button class="page-tab active" data-page="3d">3D Geometry</button>
+            <button class="page-tab" data-page="mesh">Mesh</button>
+            <button class="page-tab" data-page="fire">Fire &amp; Combustion</button>
+            <button class="page-tab" data-page="code">FDS Code</button>
+        </div>
+        <div class="actions">
+            <button class="btn btn-sm btn-secondary" id="toggle-theme" title="Toggle light / dark theme" aria-label="Toggle theme">
+                <svg id="theme-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <!-- moon (default: shown when in dark mode → click switches to light) -->
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                </svg>
+            </button>
+            <button class="btn btn-sm btn-secondary" id="load-new">Open File</button>
+        </div>
+    </div>
+
+    <div class="app-layout" id="app-layout">
+        <!-- Sidebar -->
+        <div class="sidebar" id="sidebar">
+            <!-- Statistics -->
+            <div class="sidebar-section">
+                <h3>Model Statistics</h3>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <span class="stat-dot mesh"></span>
+                        <span class="stat-label">Meshes</span>
+                        <span class="stat-value" id="stat-meshes">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-dot obst"></span>
+                        <span class="stat-label">Obstructions</span>
+                        <span class="stat-value" id="stat-obsts">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-dot vent"></span>
+                        <span class="stat-label">Vents</span>
+                        <span class="stat-value" id="stat-vents">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-dot hole"></span>
+                        <span class="stat-label">Holes</span>
+                        <span class="stat-value" id="stat-holes">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-dot devc"></span>
+                        <span class="stat-label">Devices</span>
+                        <span class="stat-value" id="stat-devcs">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-dot init"></span>
+                        <span class="stat-label">Init Regions</span>
+                        <span class="stat-value" id="stat-inits">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-dot geom"></span>
+                        <span class="stat-label">Geometries</span>
+                        <span class="stat-value" id="stat-geoms">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-dot hvac"></span>
+                        <span class="stat-label">HVAC</span>
+                        <span class="stat-value" id="stat-hvacs">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-dot zone"></span>
+                        <span class="stat-label">Zones</span>
+                        <span class="stat-value" id="stat-zones">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-dot slcf"></span>
+                        <span class="stat-label">Slice Files</span>
+                        <span class="stat-value" id="stat-slcfs">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-dot fire"></span>
+                        <span class="stat-label">Fire Sources</span>
+                        <span class="stat-value" id="stat-fires">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Layers -->
+            <div class="sidebar-section">
+                <h3>Layers</h3>
+                <div class="layer-list">
+                    <label class="layer-item">
+                        <input type="checkbox" class="layer-toggle" data-layer="meshes" checked>
+                        <span class="layer-color" style="background: var(--mesh-color)"></span>
+                        Meshes
+                    </label>
+                    <label class="layer-item">
+                        <input type="checkbox" class="layer-toggle" data-layer="obsts" checked>
+                        <span class="layer-color" style="background: var(--obst-color)"></span>
+                        Obstructions
+                    </label>
+                    <label class="layer-item">
+                        <input type="checkbox" class="layer-toggle" data-layer="vents" checked>
+                        <span class="layer-color" style="background: var(--vent-color)"></span>
+                        Vents
+                    </label>
+                    <label class="layer-item">
+                        <input type="checkbox" class="layer-toggle" data-layer="holes" checked>
+                        <span class="layer-color" style="background: var(--hole-color)"></span>
+                        Holes
+                    </label>
+                    <label class="layer-item">
+                        <input type="checkbox" class="layer-toggle" data-layer="devcs" checked>
+                        <span class="layer-color" style="background: var(--devc-color)"></span>
+                        Devices
+                    </label>
+                    <label class="layer-item">
+                        <input type="checkbox" class="layer-toggle" data-layer="inits" checked>
+                        <span class="layer-color" style="background: #ff8800"></span>
+                        Init Regions
+                    </label>
+                    <label class="layer-item">
+                        <input type="checkbox" class="layer-toggle" data-layer="geoms" checked>
+                        <span class="layer-color" style="background: #64c8ff"></span>
+                        Geometries
+                    </label>
+                    <label class="layer-item">
+                        <input type="checkbox" class="layer-toggle" data-layer="hvacs" checked>
+                        <span class="layer-color" style="background: #ffaa00"></span>
+                        HVAC
+                    </label>
+                    <label class="layer-item">
+                        <input type="checkbox" class="layer-toggle" data-layer="zones" checked>
+                        <span class="layer-color" style="background: #8866ff"></span>
+                        Zones
+                    </label>
+                    <label class="layer-item">
+                        <input type="checkbox" class="layer-toggle" data-layer="slcfs" checked>
+                        <span class="layer-color" style="background: #22dd88"></span>
+                        Slice Planes
+                    </label>
+                    <label class="layer-item">
+                        <input type="checkbox" class="layer-toggle" data-layer="fires" checked>
+                        <span class="layer-color" style="background: #ff4400"></span>
+                        Fire Sources
+                    </label>
+                    <label class="layer-item">
+                        <input type="checkbox" class="layer-toggle" data-layer="grid" checked>
+                        <span class="layer-color" style="background: #444466"></span>
+                        Grid
+                    </label>
+                </div>
+
+                <!-- Opacity -->
+                <div class="slider-row">
+                    <label>Opacity</label>
+                    <input type="range" id="obst-opacity" min="0" max="1" step="0.05" value="1">
+                    <span class="slider-value" id="opacity-value">100%</span>
+                </div>
+            </div>
+
+            <!-- Views -->
+            <div class="sidebar-section">
+                <h3>Camera Views</h3>
+                <div class="view-grid">
+                    <button class="view-btn" data-view="front">Front</button>
+                    <button class="view-btn" data-view="back">Back</button>
+                    <button class="view-btn" data-view="left">Left</button>
+                    <button class="view-btn" data-view="right">Right</button>
+                    <button class="view-btn" data-view="top">Top</button>
+                    <button class="view-btn" data-view="bottom">Bottom</button>
+                    <button class="view-btn" data-view="iso">Iso</button>
+                    <button class="view-btn" id="reset-camera">Reset</button>
+                </div>
+            </div>
+
+            <!-- Background -->
+            <div class="sidebar-section">
+                <h3>Background</h3>
+                <div class="bg-options">
+                    <button class="bg-option active" data-color="#1a1a2e" style="background: #1a1a2e" title="Dark Blue"></button>
+                    <button class="bg-option" data-color="#111111" style="background: #111111" title="Black"></button>
+                    <button class="bg-option" data-color="#2d2d2d" style="background: #2d2d2d" title="Dark Gray"></button>
+                    <button class="bg-option" data-color="#e8e8e8" style="background: #e8e8e8; border-color: #ccc" title="Light Gray"></button>
+                    <button class="bg-option" data-color="#ffffff" style="background: #ffffff; border-color: #ccc" title="White"></button>
+                    <button class="bg-option" data-color="#1b2838" style="background: #1b2838" title="Steam"></button>
+                </div>
+            </div>
+
+            <!-- Selection Info -->
+            <div class="sidebar-section" style="flex: 1;">
+                <h3>Selected Object</h3>
+                <div id="info-content">
+                    <p class="hint">Click an object in the 3D view to see its properties.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main viewing area -->
+        <div class="main-area">
+            <!-- Drop zone (shown initially) -->
+            <div id="drop-zone">
+                <div class="drop-content">
+                    <h2 class="drop-logo">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                            <path d="M2 17l10 5 10-5"/>
+                            <path d="M2 12l10 5 10-5"/>
+                        </svg>
+                        FDS Viewer
+                    </h2>
+                    <p>Drop an .fds file here to visualize geometry in 3D.</p>
+                    <div class="drop-actions">
+                        <button class="btn btn-primary" id="load-sample">Load Sample</button>
+                        <button class="btn btn-secondary" onclick="document.getElementById('file-input').click()">Open .fds File</button>
+                    </div>
+                    <div class="shortcuts">
+                        <span class="shortcut"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Move</span>
+                        <span class="shortcut"><kbd>Q</kbd><kbd>E</kbd> Up/Down</span>
+                        <span class="shortcut"><kbd>&larr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&rarr;</kbd> Rotate</span>
+                        <span class="shortcut"><kbd>1</kbd>–<kbd>6</kbd> Views</span>
+                        <span class="shortcut"><kbd>R</kbd> Reset</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3D Viewer canvas (hidden until file loaded) -->
+            <div id="viewer-container"></div>
+        </div>
+    </div>
+
+    <!-- Mesh Panel -->
+    <div id="mesh-panel">
+        <div class="fp-scroll">
+            <p class="fp-empty">Load an .fds file to view mesh resolution and parallel setup.</p>
+        </div>
+    </div>
+
+    <!-- Fire & Combustion Panel -->
+    <div id="fire-panel">
+        <div class="fp-scroll">
+            <p class="fp-empty">Load an .fds file to view fire &amp; combustion properties.</p>
+        </div>
+    </div>
+
+    <!-- FDS Code Panel -->
+    <div id="fds-code-panel">
+        <div class="fp-scroll">
+            <p class="fp-empty">Load an .fds file to view the full source code.</p>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer-bar">
+        <span class="footer-credit">&#169; Prof Rino Lovreglio, PhD &nbsp;|&nbsp; <em>No responsibility is taken for the use or output of these tools.</em></span>
+    </div>
+
+    <input type="file" id="file-input" accept=".fds,.txt">
+
+    <!-- Three.js (CDN) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <!-- Application Scripts -->
+    <script src="js/sample-data.js"></script>
+    <script src="js/fds-parser.js"></script>
+    <script src="js/viewer.js"></script>
+    <script src="js/fire-panel.js"></script>
+    <script src="js/mesh-panel.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
