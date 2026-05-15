@@ -61,17 +61,16 @@ straight from `file://`. The only network call is to the Three.js CDN
 
 ### Option B — Online (GitHub Pages)
 
-If this repo is hosted on GitHub Pages, you can use the live URL — handy
-for sharing a link to colleagues:
+Use the live URL — no download needed, handy for sharing with colleagues:
 
 ```
-https://<user>.github.io/<repo>/
+https://profrino.github.io/fds-viewer/
 ```
 
 You can also auto-load a bundled example via the `?file=` parameter:
 
 ```
-https://<user>.github.io/<repo>/?file=examples/sample_room_fire.fds
+https://profrino.github.io/fds-viewer/?file=examples/sample_room_fire.fds
 ```
 
 ### Option C — Local server (only needed for `?file=` URL params)
