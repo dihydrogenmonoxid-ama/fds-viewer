@@ -40,7 +40,7 @@ after a failed run.
 
 ## Download
 
-- **Latest packaged release** (recommended): **[fds-viewer-vX.Y.Z.zip](https://github.com/ProfRino/fds-viewer/releases/latest)** — clean zip, no git history.
+- **Latest packaged release** (recommended): **[Download the latest release](https://github.com/ProfRino/fds-viewer/releases/latest)** — clean zip, no git history. The exact version is shown in the `latest` badge at the top.
 - **All releases** (with per-version download counts): <https://github.com/ProfRino/fds-viewer/releases>
 - **Clone the development branch:** `git clone https://github.com/ProfRino/fds-viewer.git`
 
