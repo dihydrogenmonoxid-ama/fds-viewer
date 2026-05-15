@@ -44,6 +44,8 @@ after a failed run.
 - **All releases** (with per-version download counts): <https://github.com/ProfRino/fds-viewer/releases>
 - **Clone the development branch:** `git clone https://github.com/ProfRino/fds-viewer.git`
 
+> Listed on the official [FDS Third-Party Tools wiki](https://github.com/firemodels/fds/wiki/Third-Party-Tools) — maintained by the FDS development community (firemodels/fds, NIST).
+
 ## Quick start
 
 ### Option A — Just open the file (no server, any OS)
