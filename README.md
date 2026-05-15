@@ -1,6 +1,7 @@
 # FDS Viewer
 
 [![Listed on FDS Third-Party Tools](https://img.shields.io/badge/Listed%20on-FDS%20Third--Party%20Tools-1f5b96?logo=github&logoColor=white)](https://github.com/firemodels/fds/wiki/Third-Party-Tools)
+[![GitHub Downloads](https://img.shields.io/github/downloads/ProfRino/fds-viewer/total?logo=github&label=downloads)](https://github.com/ProfRino/fds-viewer/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 A browser-based 3D previewer for **Fire Dynamics Simulator (FDS)** input files.
