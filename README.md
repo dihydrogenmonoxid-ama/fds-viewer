@@ -1,6 +1,7 @@
 # FDS Viewer
 
 [![Listed on FDS Third-Party Tools](https://img.shields.io/badge/Listed%20on-FDS%20Third--Party%20Tools-1f5b96?logo=github&logoColor=white)](https://github.com/firemodels/fds/wiki/Third-Party-Tools)
+[![Latest release](https://img.shields.io/github/v/release/ProfRino/fds-viewer?logo=github&label=latest)](https://github.com/ProfRino/fds-viewer/releases/latest)
 [![GitHub Downloads](https://img.shields.io/github/downloads/ProfRino/fds-viewer/total?logo=github&label=downloads)](https://github.com/ProfRino/fds-viewer/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -37,11 +38,17 @@ after a failed run.
 - Drag‑and‑drop or "Open File" — multiple files can be dropped sequentially
   on the same session.
 
+## Download
+
+- **Latest packaged release** (recommended): **[fds-viewer-vX.Y.Z.zip](https://github.com/ProfRino/fds-viewer/releases/latest)** — clean zip, no git history.
+- **All releases** (with per-version download counts): <https://github.com/ProfRino/fds-viewer/releases>
+- **Clone the development branch:** `git clone https://github.com/ProfRino/fds-viewer.git`
+
 ## Quick start
 
 ### Option A — Just open the file (no server, any OS)
 
-1. Download or clone the repo.
+1. Download the [latest release zip](https://github.com/ProfRino/fds-viewer/releases/latest) and unzip it (or clone the repo).
 2. Double‑click **`index.html`** — it opens in your default browser.
 3. Click **Load Sample**, drop any `.fds` file on the page, or use
    **Open File**. Done.
