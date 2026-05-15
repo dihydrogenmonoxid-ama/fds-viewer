@@ -1,5 +1,8 @@
 # FDS Viewer
 
+[![Listed on FDS Third-Party Tools](https://img.shields.io/badge/Listed%20on-FDS%20Third--Party%20Tools-1f5b96?logo=github&logoColor=white)](https://github.com/firemodels/fds/wiki/Third-Party-Tools)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 A browser-based 3D previewer for **Fire Dynamics Simulator (FDS)** input files.
 Drop in any `.fds` file and inspect meshes, obstructions, vents, holes,
 devices, slice planes, fire sources and HVAC networks **before** launching a
@@ -116,9 +119,13 @@ the bottom of `index.html` with local paths.
 
 MIT — see [LICENSE](LICENSE).
 
+## Recognition
+
+Listed on the official [FDS Third-Party Tools wiki](https://github.com/firemodels/fds/wiki/Third-Party-Tools) maintained by the FDS development community (firemodels/fds, NIST).
+
 ## Citation
 
 If you use this tool in published work, please cite:
 
 > Lovreglio, R. *FDS Viewer*. Massey University.
-> https://github.com/<user>/<repo>
+> https://github.com/ProfRino/fds-viewer
