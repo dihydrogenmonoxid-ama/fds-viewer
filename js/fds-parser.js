@@ -163,48 +163,97 @@ class FDSParser {
      */
     _parseBody(body) {
         const params = {};
-        // Normalize whitespace
-        let s = body.replace(/\s+/g, ' ').trim();
+        // Quote-aware whitespace collapse + remove spaces around '='.
+        // Plain replace(/\s+/g,' ') would corrupt quoted string contents.
+        const s = this._normalizeBody(body);
 
-        // Collapse spaces around '=' so "VERTS = -1.0" becomes "VERTS=-1.0"
-        // This must happen before tokenizing to keep key=value together
-        s = s.replace(/\s*=\s*/g, '=');
-
-        // Split by commas that are not inside quotes, then by spaces around =
-        // FDS format: KEY=VALUE or KEY=V1,V2,V3,...
+        // Split by commas/spaces outside quotes
         const tokens = this._tokenize(s);
 
         let currentKey = null;
         let currentValues = [];
+        const commit = () => {
+            if (!currentKey) return;
+            const value = currentValues.length === 1 ? currentValues[0] : currentValues;
+            // Handle array-indexed keys like XB(1), IJK(2), RGB(3)
+            const m = currentKey.match(/^([A-Z_][A-Z0-9_]*)\(\s*(\d+)\s*\)$/);
+            if (m) {
+                const base = m[1];
+                const idx = parseInt(m[2], 10) - 1; // FDS is 1-indexed
+                if (!Array.isArray(params[base])) {
+                    const existing = params[base];
+                    params[base] = [];
+                    if (existing !== undefined) params[base][0] = existing;
+                }
+                params[base][idx] = value;
+            } else {
+                params[currentKey] = value;
+            }
+        };
 
         for (const token of tokens) {
             if (token.includes('=')) {
-                // Save previous key
-                if (currentKey) {
-                    params[currentKey] = currentValues.length === 1 ? currentValues[0] : currentValues;
-                }
-
+                commit();
                 const eqIdx = token.indexOf('=');
                 currentKey = token.substring(0, eqIdx).trim().toUpperCase();
                 const valStr = token.substring(eqIdx + 1).trim();
-                currentValues = [];
-
-                if (valStr.length > 0) {
-                    currentValues = this._parseValues(valStr);
-                }
+                currentValues = valStr.length > 0 ? this._parseValues(valStr) : [];
             } else if (currentKey) {
-                // Continuation values
-                const vals = this._parseValues(token);
-                currentValues.push(...vals);
+                currentValues.push(...this._parseValues(token));
             }
         }
-
-        // Save last key
-        if (currentKey) {
-            params[currentKey] = currentValues.length === 1 ? currentValues[0] : currentValues;
-        }
+        commit();
 
         return params;
+    }
+
+    /**
+     * Quote-aware normalisation: collapse whitespace runs (outside quotes) to
+     * a single space, and drop spaces flanking '='. Quoted strings are
+     * preserved byte-for-byte so values containing spaces or '=' survive.
+     */
+    _normalizeBody(body) {
+        let out = '';
+        let inSQ = false, inDQ = false;
+        let prevSpace = false;
+        for (let i = 0; i < body.length; i++) {
+            const ch = body[i];
+            if (ch === "'" && !inDQ) {
+                inSQ = !inSQ;
+                out += ch;
+                prevSpace = false;
+            } else if (ch === '"' && !inSQ) {
+                inDQ = !inDQ;
+                out += ch;
+                prevSpace = false;
+            } else if (inSQ || inDQ) {
+                out += ch;
+                prevSpace = false;
+            } else if (ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r') {
+                if (!prevSpace) out += ' ';
+                prevSpace = true;
+            } else {
+                out += ch;
+                prevSpace = false;
+            }
+        }
+        // Strip spaces around '=' outside quotes
+        let s = '';
+        inSQ = false; inDQ = false;
+        for (let i = 0; i < out.length; i++) {
+            const ch = out[i];
+            if (ch === "'" && !inDQ) { inSQ = !inSQ; s += ch; }
+            else if (ch === '"' && !inSQ) { inDQ = !inDQ; s += ch; }
+            else if (!inSQ && !inDQ && ch === ' ') {
+                const next = out[i + 1];
+                const prev = s[s.length - 1];
+                if (next === '=' || prev === '=') continue;
+                s += ch;
+            } else {
+                s += ch;
+            }
+        }
+        return s.trim();
     }
 
     /**
@@ -243,40 +292,51 @@ class FDSParser {
     }
 
     /**
-     * Parse value string(s) into typed values
+     * Parse value string(s) into typed values. Quote-aware comma split so a
+     * value like 'a,b' stays intact instead of being shredded.
      */
     _parseValues(valStr) {
-        const values = [];
-        const parts = valStr.split(',').map(p => p.trim()).filter(p => p.length > 0);
-
-        for (const part of parts) {
-            values.push(this._parseValue(part));
+        const parts = [];
+        let cur = '';
+        let inSQ = false, inDQ = false;
+        for (let i = 0; i < valStr.length; i++) {
+            const ch = valStr[i];
+            if (ch === "'" && !inDQ) { inSQ = !inSQ; cur += ch; }
+            else if (ch === '"' && !inSQ) { inDQ = !inDQ; cur += ch; }
+            else if (ch === ',' && !inSQ && !inDQ) {
+                if (cur.trim().length > 0) parts.push(cur.trim());
+                cur = '';
+            } else {
+                cur += ch;
+            }
         }
-
-        return values;
+        if (cur.trim().length > 0) parts.push(cur.trim());
+        return parts.map(p => this._parseValue(p));
     }
 
     /**
-     * Parse a single value
+     * Parse a single value. Fortran namelist booleans accept .TRUE./.FALSE.,
+     * .T./.F., TRUE/FALSE, and bare T/F — all case-insensitive.
      */
     _parseValue(val) {
         val = val.trim();
 
-        // Boolean
-        if (val === '.TRUE.' || val === '.true.') return true;
-        if (val === '.FALSE.' || val === '.false.') return false;
-
-        // Quoted string
+        // Quoted string (check first so 'T' stays a string)
         if ((val.startsWith("'") && val.endsWith("'")) ||
             (val.startsWith('"') && val.endsWith('"'))) {
             return val.substring(1, val.length - 1);
         }
 
-        // Number
-        const num = Number(val);
-        if (!isNaN(num) && val.length > 0) return num;
+        const upper = val.toUpperCase();
+        if (upper === '.TRUE.' || upper === '.T.' || upper === 'TRUE' || upper === 'T') return true;
+        if (upper === '.FALSE.' || upper === '.F.' || upper === 'FALSE' || upper === 'F') return false;
 
-        // Return as string
+        // Number — guard against Number('') = 0 and reject hex/octal coercion
+        if (val.length > 0 && /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(val)) {
+            const num = Number(val);
+            if (!isNaN(num)) return num;
+        }
+
         return val;
     }
 
@@ -392,10 +452,15 @@ class FDSParser {
     }
 
     _processMesh(params) {
+        const ijk = this._getIJK(params);
         const mesh = {
             id: params.ID || `Mesh_${this.meshes.length + 1}`,
             xb: this._getXB(params),
-            ijk: this._getIJK(params),
+            ijk,
+            // Track whether IJK was explicitly set so renderers can skip the
+            // grid for synthesised defaults instead of drawing a misleading
+            // 10×10×10 lattice that doesn't match any real cell count.
+            ijk_explicit: !!params.IJK,
             color: params.COLOR || null,
             mult_id: params.MULT_ID || null,
             _params: params,

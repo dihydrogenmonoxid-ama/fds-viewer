@@ -17,7 +17,7 @@
                 <path d="M2 17l10 5 10-5"/>
                 <path d="M2 12l10 5 10-5"/>
             </svg>
-            FDS Viewer
+            <span class="logo-text">FDS Viewer</span>
         </div>
         <div class="file-info">
             <span id="filename-display">No file loaded</span>
@@ -27,7 +27,9 @@
             <button class="page-tab active" data-page="3d">3D Geometry</button>
             <button class="page-tab" data-page="mesh">Mesh</button>
             <button class="page-tab" data-page="fire">Fire &amp; Combustion</button>
-            <button class="page-tab" data-page="code">FDS Code</button>
+            <button class="page-tab" data-page="code">Code</button>
+            <button class="page-tab" data-page="output">Output</button>
+            <button class="page-tab" data-page="help" title="User guide">Help</button>
         </div>
         <div class="actions">
             <button class="btn btn-sm btn-secondary" id="toggle-theme" title="Toggle light / dark theme" aria-label="Toggle theme">
@@ -108,6 +110,10 @@
             <!-- Layers -->
             <div class="sidebar-section">
                 <h3>Layers</h3>
+                <div class="layer-bulk">
+                    <button class="layer-bulk-btn" id="layer-show-all">Show all</button>
+                    <button class="layer-bulk-btn" id="layer-hide-all">Hide all</button>
+                </div>
                 <div class="layer-list">
                     <label class="layer-item">
                         <input type="checkbox" class="layer-toggle" data-layer="meshes" checked>
@@ -155,14 +161,14 @@
                         Zones
                     </label>
                     <label class="layer-item">
-                        <input type="checkbox" class="layer-toggle" data-layer="slcfs" checked>
-                        <span class="layer-color" style="background: #22dd88"></span>
-                        Slice Planes
-                    </label>
-                    <label class="layer-item">
                         <input type="checkbox" class="layer-toggle" data-layer="fires" checked>
                         <span class="layer-color" style="background: #ff4400"></span>
                         Fire Sources
+                    </label>
+                    <label class="layer-item">
+                        <input type="checkbox" class="layer-toggle" data-layer="slices" checked>
+                        <span class="layer-color" style="background: #888"></span>
+                        Slices
                     </label>
                     <label class="layer-item">
                         <input type="checkbox" class="layer-toggle" data-layer="grid" checked>
@@ -177,6 +183,18 @@
                     <input type="range" id="obst-opacity" min="0" max="1" step="0.05" value="1">
                     <span class="slider-value" id="opacity-value">100%</span>
                 </div>
+
+                <!-- OBST edge wireframes (off by default; toggle on for authoring) -->
+                <label class="layer-item" style="margin-top:6px;">
+                    <input type="checkbox" id="show-obst-edges">
+                    Show OBST edges
+                </label>
+
+                <!-- Color / grayscale toggle -->
+                <label class="layer-item" style="margin-top:4px;" title="Render the scene desaturated. Useful as a backdrop when slice/boundary overlays are loaded on the Output page.">
+                    <input type="checkbox" id="scene-grayscale">
+                    Grayscale (no colours)
+                </label>
             </div>
 
             <!-- Views -->
@@ -194,6 +212,23 @@
                 </div>
             </div>
 
+            <!-- Walk mode (FPS) -->
+            <div class="sidebar-section">
+                <h3>Walk Mode (FPS)</h3>
+                <button id="walk-mode-btn" class="walk-btn">Enter walk mode</button>
+                <p class="walk-hint">First-person navigation. Click any horizontal surface to teleport, then use mouse + WASD.</p>
+                <div class="slider-row">
+                    <label title="Eye height above floor">Eye height</label>
+                    <input type="range" id="walk-eye-height" min="0.5" max="3.0" step="0.05" value="1.7">
+                    <span class="slider-value" id="walk-eye-height-val">1.70 m</span>
+                </div>
+                <div class="slider-row">
+                    <label title="Walking speed in metres per second">Walk speed</label>
+                    <input type="range" id="walk-speed" min="0.5" max="5.0" step="0.1" value="1.8">
+                    <span class="slider-value" id="walk-speed-val">1.8 m/s</span>
+                </div>
+            </div>
+
             <!-- Background -->
             <div class="sidebar-section">
                 <h3>Background</h3>
@@ -207,13 +242,6 @@
                 </div>
             </div>
 
-            <!-- Selection Info -->
-            <div class="sidebar-section" style="flex: 1;">
-                <h3>Selected Object</h3>
-                <div id="info-content">
-                    <p class="hint">Click an object in the 3D view to see its properties.</p>
-                </div>
-            </div>
         </div>
 
         <!-- Main viewing area -->
@@ -245,7 +273,62 @@
             </div>
 
             <!-- 3D Viewer canvas (hidden until file loaded) -->
-            <div id="viewer-container"></div>
+            <div id="viewer-container">
+                <!-- Walk-mode HUD (FPS) -->
+                <div id="walk-hud" style="display:none;">
+                    <div id="walk-hud-content">
+                        <div id="walk-hud-title">Walk mode</div>
+                        <div id="walk-hud-instructions">
+                            <strong>Click</strong> a floor/surface to place yourself.<br>
+                            Then <strong>WASD</strong> to walk, <strong>mouse</strong> to look around.<br>
+                            <strong>Shift</strong> = run, <strong>Space</strong> = jump, <strong>Esc</strong> = exit.
+                        </div>
+                        <div id="walk-hud-status"></div>
+                    </div>
+                    <div id="walk-crosshair">+</div>
+                </div>
+
+                <!-- Floating object info panel (top-right) -->
+                <div id="object-info-panel">
+                    <div id="object-info-header">
+                        <span id="object-info-title">Selected Object</span>
+                        <button id="object-info-close">&#x2715;</button>
+                    </div>
+                    <div id="object-info-content"></div>
+                </div>
+
+                <!-- Projection toggle (bottom-right) — swap perspective / orthographic -->
+                <button type="button" id="proj-toggle" class="proj-toggle" title="Switch to orthographic projection" aria-label="Projection mode">
+                    <span class="proj-toggle-label">Persp</span>
+                </button>
+
+                <!-- Clipping panel (shown after file load) -->
+                <div id="clip-panel">
+                    <span class="clip-title">Clip</span>
+                    <div class="clip-axis">
+                        <span class="clip-axis-label">X</span>
+                        <div class="clip-num-wrap"><button class="clip-step" data-id="clip-xmin-val" data-dir="-1">&#9660;</button><input type="text" class="clip-num-input" id="clip-xmin-val"><button class="clip-step" data-id="clip-xmin-val" data-dir="1">&#9650;</button></div>
+                        <input type="range" class="clip-slider" id="clip-xmin">
+                        <input type="range" class="clip-slider" id="clip-xmax">
+                        <div class="clip-num-wrap"><button class="clip-step" data-id="clip-xmax-val" data-dir="-1">&#9660;</button><input type="text" class="clip-num-input" id="clip-xmax-val"><button class="clip-step" data-id="clip-xmax-val" data-dir="1">&#9650;</button></div>
+                    </div>
+                    <div class="clip-axis">
+                        <span class="clip-axis-label">Y</span>
+                        <div class="clip-num-wrap"><button class="clip-step" data-id="clip-ymin-val" data-dir="-1">&#9660;</button><input type="text" class="clip-num-input" id="clip-ymin-val"><button class="clip-step" data-id="clip-ymin-val" data-dir="1">&#9650;</button></div>
+                        <input type="range" class="clip-slider" id="clip-ymin">
+                        <input type="range" class="clip-slider" id="clip-ymax">
+                        <div class="clip-num-wrap"><button class="clip-step" data-id="clip-ymax-val" data-dir="-1">&#9660;</button><input type="text" class="clip-num-input" id="clip-ymax-val"><button class="clip-step" data-id="clip-ymax-val" data-dir="1">&#9650;</button></div>
+                    </div>
+                    <div class="clip-axis">
+                        <span class="clip-axis-label">Z</span>
+                        <div class="clip-num-wrap"><button class="clip-step" data-id="clip-zmin-val" data-dir="-1">&#9660;</button><input type="text" class="clip-num-input" id="clip-zmin-val"><button class="clip-step" data-id="clip-zmin-val" data-dir="1">&#9650;</button></div>
+                        <input type="range" class="clip-slider" id="clip-zmin">
+                        <input type="range" class="clip-slider" id="clip-zmax">
+                        <div class="clip-num-wrap"><button class="clip-step" data-id="clip-zmax-val" data-dir="-1">&#9660;</button><input type="text" class="clip-num-input" id="clip-zmax-val"><button class="clip-step" data-id="clip-zmax-val" data-dir="1">&#9650;</button></div>
+                    </div>
+                    <button id="clip-reset-btn">Reset</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -270,9 +353,812 @@
         </div>
     </div>
 
+    <!-- Help / User Guide Panel — multi-page wizard style -->
+    <div id="help-panel">
+        <div class="help-scroll">
+            <nav class="help-nav" aria-label="User guide pages">
+                <h3>User Guide</h3>
+                <ul class="help-nav-list">
+                    <li><button type="button" class="help-nav-link active" data-help-page="quickstart">Quick start</button></li>
+                    <li><button type="button" class="help-nav-link" data-help-page="3d">3D Geometry</button></li>
+                    <li><button type="button" class="help-nav-link" data-help-page="mesh">Mesh</button></li>
+                    <li><button type="button" class="help-nav-link" data-help-page="fire">Fire &amp; Combustion</button></li>
+                    <li><button type="button" class="help-nav-link" data-help-page="code">Code</button></li>
+                    <li><button type="button" class="help-nav-link" data-help-page="output">Output</button></li>
+                    <li><button type="button" class="help-nav-link" data-help-page="shortcuts">Keyboard shortcuts</button></li>
+                    <li><button type="button" class="help-nav-link" data-help-page="troubleshoot">Troubleshooting</button></li>
+                </ul>
+            </nav>
+
+            <article class="help-article">
+                <header class="help-banner">
+                    <h2>FDS Viewer &mdash; User Guide</h2>
+                    <p class="help-lede">A browser-based viewer for Fire Dynamics Simulator inputs and outputs.</p>
+                </header>
+
+                <section class="help-page active" data-help-page="quickstart">
+                    <h3>Quick start</h3>
+                    <ol>
+                        <li>Drop an <code>.fds</code> file on the welcome screen, click <em>Open File</em>, or click <em>Load Sample</em> to try the bundled example.</li>
+                        <li>The model appears on the <strong>3D Geometry</strong> tab. Drag with the mouse to orbit, scroll to zoom, right-click drag to pan.</li>
+                        <li>Other tabs come alive once a file is loaded &mdash; switch between them to inspect mesh resolution, fire setup, source code, and simulation results.</li>
+                    </ol>
+                    <p>Use the sidebar on the left of this page to jump to any topic.</p>
+                </section>
+
+                <section class="help-page" data-help-page="3d">
+                    <h3>3D Geometry</h3>
+                    <p>The default tab. Shows the geometry parsed from the <code>.fds</code> file: meshes, obstructions (OBST), vents, holes, devices, geometries (GEOM), HVAC, zones, slice planes (&amp;SLCF), fire sources, and the cell grid.</p>
+                    <h4>Left sidebar</h4>
+                    <ul>
+                        <li><strong>Layers</strong> &mdash; toggle visibility of each FDS entity type. <em>Show all</em> / <em>Hide all</em> buttons batch-toggle. <em>Show OBST edges</em> draws a black outline on every obstruction, useful for authoring. <em>Grayscale</em> desaturates the scene.</li>
+                        <li><strong>Opacity</strong> &mdash; ghost the geometry to peek inside.</li>
+                        <li><strong>Camera Views</strong> &mdash; jump to Front, Back, Left, Right, Top, Bottom, Iso. <em>Reset</em> re-fits the model.</li>
+                        <li><strong>Background</strong> &mdash; six preset colours. The theme toggle in the top-right also flips the background between dark blue and light grey.</li>
+                    </ul>
+                    <h4>Clip bar (bottom)</h4>
+                    <p>Six sliders (one min/max per axis) clip the scene to a sub-volume. Drag the handles, type a value, or use the &#9650;/&#9660; step buttons. Click <em>Reset</em> to clear the clip.</p>
+                    <h4>Click-to-inspect</h4>
+                    <p>Click any visible OBST, VENT, HOLE, DEVC, GEOM, HVAC, ZONE, INIT or fire source to highlight it and open a floating info panel with its parameters and raw FDS namelist.</p>
+                    <h4>Walk Mode (FPS)</h4>
+                    <p>First-person navigation through the model &mdash; useful for understanding scale and seeing how rooms connect from inside.</p>
+                    <ol>
+                        <li>Click <strong>Enter walk mode</strong> in the sidebar.</li>
+                        <li>Click anywhere on a floor or top surface to teleport there at eye height (1.7 m default, adjustable).</li>
+                        <li>Use <strong>WASD</strong> to walk, the <strong>mouse</strong> to look around. <strong>Shift</strong> sprints, <strong>Space</strong> jumps, <strong>Esc</strong> exits walk mode.</li>
+                    </ol>
+                    <p>The walker is gravity-bound and collides with OBST/GEOM surfaces. Eye height and walk speed sliders let you tune the feel. The same control is also available on the Output tab.</p>
+                </section>
+
+                <section class="help-page" data-help-page="mesh">
+                    <h3>Mesh</h3>
+                    <p>Parallel-friendly mesh diagnostics:</p>
+                    <ul>
+                        <li>Per-mesh cell sizes and total cell counts</li>
+                        <li>Cell aspect ratios &mdash; flags meshes where dx/dy/dz are unbalanced</li>
+                        <li>MPI process breakdown if <code>MPI_PROCESS</code> is set</li>
+                        <li>D*/dx resolution analysis for fire sources, comparing the modelled cell size against published guidance for the peak HRR</li>
+                    </ul>
+                </section>
+
+                <section class="help-page" data-help-page="fire">
+                    <h3>Fire &amp; Combustion</h3>
+                    <p>Pulls everything fire-related into one view:</p>
+                    <ul>
+                        <li><strong>Combustion Reaction</strong> &mdash; fuel species, heat of combustion, soot/CO/CO&#8322; yields, radiative fraction, and a rendered combustion equation for simple hydrocarbons.</li>
+                        <li><strong>Fire Sources</strong> &mdash; every SURF with <code>HRRPUA</code> or <code>MLRPUA</code>, its growth (t&sup2; / exponential / explicit ramp / steady), vent area, and peak HRR.</li>
+                        <li><strong>HRR Preview</strong> &mdash; tiny inline charts of each fire's heat release curve.</li>
+                        <li><strong>Materials</strong> &mdash; SURFs that reference MATL layers, with burn indicators and thicknesses.</li>
+                    </ul>
+                </section>
+
+                <section class="help-page" data-help-page="code">
+                    <h3>Code</h3>
+                    <p>Full source of the loaded <code>.fds</code> file with line numbers, comment/namelist syntax highlighting and a search bar.</p>
+                    <ul>
+                        <li><strong>Copy all</strong> &mdash; copy the whole file to clipboard.</li>
+                        <li><strong>Save annotated</strong> &mdash; export a copy with <code>! &#9888; &hellip;</code> comments inline for every static-linter finding (helpful for sharing reviews).</li>
+                        <li><strong>Edit</strong> &mdash; switch the source pane to a text editor, edit, then click <em>Apply &amp; reload</em> to re-parse the modified file in place.</li>
+                    </ul>
+                </section>
+
+                <section class="help-page" data-help-page="output">
+                    <h3>Output</h3>
+                    <p>Visualises FDS simulation results in 3D, overlaid on the geometry. Three independent data modes &mdash; switch via the <strong>Soot / Slice / Boundary</strong> buttons at the top of the right sidebar.</p>
+
+                    <h4>Soot &mdash; 3D smoke (volume ray-march)</h4>
+                    <p>Click <em>Open simulation folder</em> and pick the directory of the FDS run (must contain the <code>.smv</code> file and at least one <code>.s3d</code> file). The viewer parses <code>.smv</code> to detect what's available, lists it under <strong>Detected Smoke3D</strong>, then waits for you to commit to loading the heavy binary frames.</p>
+
+                    <h5>Controls reference</h5>
+                    <dl class="help-control-ref">
+
+                        <dt>Quantity</dt>
+                        <dd>Which smoke3D quantity to render. <em>Soot</em> shows particulate density (grey smoke). <em>HRRPUV</em> shows heat release rate per unit volume (orange/red flames). <em>Soot + HRRPUV</em> renders both layers blended &mdash; only available when both files are in the folder.</dd>
+
+                        <dt>Load selected data</dt>
+                        <dd>Triggers the actual decoding. Each <code>.s3d</code> file is RLE-decompressed frame by frame (this is the slow part &mdash; tens of seconds for a long simulation) and uploaded to the GPU as a 3D texture. After this completes the playback, sampling, and threshold controls become interactive.</dd>
+
+                        <dt>Rendering</dt>
+                        <dd>
+                            <em>Solid-aware</em> (default) does two render passes per frame &mdash; first the opaque scene to an off-screen depth target, then the smoke with the depth texture bound as a uniform. The ray-march stops when each sample crosses a wall:
+                            <span class="help-eq">if sampleViewZ &gt; sceneViewZ &nbsp;&rarr; break</span>
+                            <em>Basic</em> skips the depth pass. Faster, but the smoke ignores OBSTs (can leak through walls).
+                        </dd>
+
+                        <dt>Play / time / fps</dt>
+                        <dd>
+                            The Play button toggles automatic frame advancement (one data frame every 220&nbsp;ms). The time readout shows the simulation time of the current frame. The fps readout is the actual <em>render</em> frame rate of the 3D viewer &mdash; not the data rate. (Data rate is typically 3&ndash;5 frames per simulation second, capped by <code>DT_S3D</code> in the <code>&amp;DUMP</code> namelist.)
+                        </dd>
+
+                        <dt>Sampling</dt>
+                        <dd>
+                            Number of ray-march samples per pixel through the smoke volume:
+                            <span class="help-eq">Full = 200 &nbsp;|&nbsp; Balanced = 120 &nbsp;|&nbsp; Fast = 60 &nbsp;|&nbsp; Coarse = 24</span>
+                            Each step length is <code>dt = (rayExit &minus; rayEntry) / steps</code>. Because the shader applies <strong>path-length opacity correction</strong>, overall brightness is preserved regardless of step count (Beer&ndash;Lambert): doubling <code>dt</code> doubles the opacity per sample, halves the sample count, total stays the same. What changes is <em>fine detail</em> &mdash; at low step counts you'll see ray-band artefacts at thin features.
+                        </dd>
+
+                        <dt>Smooth motion between frames</dt>
+                        <dd>
+                            Per-render byte interpolation between consecutive data frames:
+                            <span class="help-eq">data[i] = (1 &minus; t) &middot; A[i] + t &middot; B[i],&nbsp; t = elapsed&nbsp;/&nbsp;220 ms</span>
+                            <code>A</code> is the current data frame, <code>B</code> is the next. Hides the discrete ~3 fps data rate as continuous motion. Visual fabrication &mdash; not a real simulation state. Pause detection auto-clamps <code>t</code> to 0 when no frame change has happened recently.
+                        </dd>
+
+                        <dt>Soot threshold / HRRPUV threshold</dt>
+                        <dd>
+                            Minimum byte value (0&ndash;255) below which a voxel contributes nothing. Uses a smooth fade band (~16/255 wide) instead of a hard cutoff to avoid blocky cell-boundary clipping:
+                            <span class="help-eq">thresholdFade = smoothstep(threshold,&nbsp; threshold + 16/255,&nbsp; raw)</span>
+                            The sample's alpha is multiplied by <code>thresholdFade</code>.
+
+                            <p style="margin-top:10px;"><strong>Byte &harr; kW/m&sup3; for HRRPUV.</strong> FDS quantises the HRRPUV field to 0&ndash;255 against the <code>HRRPUV_MINMAX</code> range stored in the <code>.smv</code> file. The byte the slider drives maps back to a physical value with:</p>
+                            <span class="help-eq">byte&nbsp;=&nbsp;round((kW &minus; HRRPUV_MIN) / (HRRPUV_MAX &minus; HRRPUV_MIN) &times; 255)</span>
+                            <p style="margin-top:8px;">Worked example for a run with <code>HRRPUV_MINMAX = 0, 1200 kW/m&sup3;</code>:</p>
+                            <ul>
+                                <li>Smokeview's default cutoff is 200 kW/m&sup3; (<code>HRRPUVCUT</code>). 200/1200 &times; 255 &asymp; <strong>byte 43</strong> &mdash; so a slider value of ~43 matches Smokeview.</li>
+                                <li>Slider <strong>0</strong> &mdash; show every cell, even tiny flickers.</li>
+                                <li>Slider <strong>255</strong> &mdash; only the most intense cells (= HRRPUV_MAX).</li>
+                            </ul>
+                            <p>The kW/m&sup3; readout next to the slider does this conversion live for whatever <code>HRRPUV_MINMAX</code> your loaded data has. The <em>Smokeview default (200 kW/m&sup3;)</em> button sets the slider to whatever byte value lands at 200 kW/m&sup3; for that range.</p>
+                        </dd>
+
+                        <dt>Soot opacity / HRRPUV opacity</dt>
+                        <dd>Global opacity multipliers in [0, 1] for each quantity. They scale the final &alpha; before front-to-back accumulation. Useful for ghosting one layer while keeping the other strong.</dd>
+
+                        <dt>Soot extinction &nbsp;(default 0.20)</dt>
+                        <dd>The constant baseline term <code>b<sub>s</sub></code> in the soot alpha equation (see below). Raises opacity uniformly &mdash; smoke gets denser everywhere, including in low-data regions.</dd>
+
+                        <dt>Curve exponent &nbsp;(default 0.82)</dt>
+                        <dd>
+                            The exponent <code>e<sub>s</sub></code> applied to the raw data value before contributing to alpha. Controls contrast:
+                            <ul class="help-eq-list">
+                                <li><code>e<sub>s</sub> &lt; 1</code> &mdash; high values dominate (high contrast, sparser look)</li>
+                                <li><code>e<sub>s</sub> = 1</code> &mdash; linear response</li>
+                                <li><code>e<sub>s</sub> &gt; 1</code> &mdash; low values lifted (smoother gradient, less dramatic peaks)</li>
+                            </ul>
+                        </dd>
+
+                        <dt>Density gain &nbsp;(default 7.20)</dt>
+                        <dd>The multiplier <code>g<sub>s</sub></code> on the data-driven term. Scales how strongly the actual smoke density drives opacity.</dd>
+
+                        <dt>Fire base &nbsp;(default 0.12)</dt>
+                        <dd>Constant term <code>b<sub>f</sub></code> in the fire (HRRPUV) alpha equation &mdash; baseline opacity at zero intensity. Same role as Soot extinction but for the HRRPUV channel.</dd>
+
+                        <dt>Fire exponent &nbsp;(default 1.10)</dt>
+                        <dd>Exponent <code>e<sub>f</sub></code> applied to the normalised intensity <code>t</code>. Controls how sharply flames ramp up as intensity rises (lower &rarr; brighter low-intensity glow, higher &rarr; only the hottest cells light up).</dd>
+
+                        <dt>Fire gain &nbsp;(default 5.40)</dt>
+                        <dd>Multiplier <code>g<sub>f</sub></code> on the data-driven term &mdash; overall fire intensity. Same role as Density gain but for the HRRPUV channel.</dd>
+                    </dl>
+
+                    <h5>The soot opacity equation, all together</h5>
+                    <p>For every ray-march sample, the contribution &alpha; is:</p>
+                    <p class="help-eq help-eq-block">
+                        &alpha;<sub>soot</sub> = 1 &minus; exp(&minus;(<em>b<sub>s</sub></em> + raw<sup><em>e<sub>s</sub></em></sup> &middot; <em>g<sub>s</sub></em>) &middot; opacity &middot; pathLength)
+                    </p>
+                    <p>with <code>b<sub>s</sub></code> = Soot extinction, <code>e<sub>s</sub></code> = Curve exponent, <code>g<sub>s</sub></code> = Density gain, <code>opacity</code> = Soot opacity, <code>pathLength</code> = <code>dt</code> &times; volume world size in metres along the ray, and <code>raw</code> &isin; [0, 1] the per-cell density normalised from byte.</p>
+                    <p>The fire (HRRPUV) channel uses the same form with its own three sliders:</p>
+                    <p class="help-eq help-eq-block">
+                        &alpha;<sub>fire</sub> = 1 &minus; exp(&minus;(<em>b<sub>f</sub></em> + t<sup><em>e<sub>f</sub></em></sup> &middot; <em>g<sub>f</sub></em>) &middot; opacity &middot; pathLength)
+                    </p>
+                    <p>with <code>b<sub>f</sub></code> = Fire base, <code>e<sub>f</sub></code> = Fire exponent, <code>g<sub>f</sub></code> = Fire gain, and <code>t = (raw &minus; threshold) / (1 &minus; threshold)</code> the normalised intensity above the HRRPUV threshold. The defaults (0.12 / 1.10 / 5.40) reproduce the previously hardcoded flame look &mdash; tweak the sliders if your run's HRRPUV range needs more or less aggressive transfer.</p>
+
+                    <h5>Composing the final pixel</h5>
+                    <p>For each accumulating sample, the alpha is multiplied by every gate before being blended:</p>
+                    <p class="help-eq help-eq-block">
+                        &alpha;<sub>final</sub> = &alpha;<sub>soot/fire</sub> &nbsp;&times;&nbsp; thresholdFade &nbsp;&times;&nbsp; depthFade &nbsp;&times;&nbsp; edgeFade
+                    </p>
+                    <p>
+                        <code>depthFade</code> is only active in Solid-aware mode &mdash; it tapers the last ~30&nbsp;cm before a wall to a soft boundary instead of a hard cut.
+                        <code>edgeFade</code> fades the very edges of each volume box to avoid hard texture-clamp seams between adjacent meshes.
+                        Front-to-back compositing then accumulates colour and alpha with the usual
+                        <span class="help-eq">accum += (1 &minus; accum.a) &middot; color &middot; &alpha;</span>
+                        until accum.a saturates or the ray exits the box.
+                    </p>
+
+                    <h4>Slice &mdash; 2D cross-sections</h4>
+                    <p>Load individual <code>.sf</code> files or a whole simulation folder. Multi-mesh slices are auto-stitched in physical space (per-mesh duplicates at shared boundaries are de-duplicated). Pick a slice set from the dropdown, then play through frames. Colour map, range, and opacity are all adjustable.</p>
+
+                    <h4>Boundary &mdash; surface heatmaps on OBSTs</h4>
+                    <p>Open a folder containing <code>.bf</code> files. Each surface patch is rendered as a textured quad over the corresponding OBST face. Same play/colour/range controls as slices.</p>
+                </section>
+
+                <section class="help-page" data-help-page="shortcuts">
+                    <h3>Keyboard shortcuts</h3>
+                    <table class="help-keys">
+                        <tr><th>Key</th><th>Action</th></tr>
+                        <tr><td><kbd>1</kbd> &hellip; <kbd>6</kbd></td><td>Front / Back / Left / Right / Top / Bottom view</td></tr>
+                        <tr><td><kbd>0</kbd></td><td>Iso view</td></tr>
+                        <tr><td><kbd>R</kbd></td><td>Reset camera</td></tr>
+                        <tr><td><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd></td><td>Pan (orbit mode) / walk (walk mode)</td></tr>
+                        <tr><td><kbd>Q</kbd> <kbd>E</kbd></td><td>Pan up / down</td></tr>
+                        <tr><td><kbd>&larr;</kbd> <kbd>&uarr;</kbd> <kbd>&darr;</kbd> <kbd>&rarr;</kbd></td><td>Rotate around the target</td></tr>
+                        <tr><td><kbd>Shift</kbd></td><td>Sprint (walk mode)</td></tr>
+                        <tr><td><kbd>Space</kbd></td><td>Jump (walk mode)</td></tr>
+                        <tr><td><kbd>Esc</kbd></td><td>Exit walk mode / close modal</td></tr>
+                    </table>
+                </section>
+
+                <section class="help-page" data-help-page="troubleshoot">
+                    <h3>Troubleshooting</h3>
+                    <h4>Viewer issues</h4>
+                    <ul>
+                        <li><strong>Smoke leaks through walls</strong> &mdash; switch Rendering from <em>Basic</em> to <em>Solid-aware</em>.</li>
+                        <li><strong>Smoke disappears behind OBSTs in Solid-aware</strong> &mdash; a known trade-off of single-pass volume rendering; fall back to <em>Basic</em> if the smoke needs to read everywhere.</li>
+                        <li><strong>Choppy smoke playback</strong> &mdash; tick <em>Smooth motion between frames</em>. The data rate is typically 3&ndash;5 frames per simulation second.</li>
+                        <li><strong>"Invalid Smoke3D record length" on load</strong> &mdash; the <code>.s3d</code> file is truncated. The viewer recovers automatically: every frame up to the corruption is shown, the rest is skipped.</li>
+                        <li><strong>Slice shows banded duplicates</strong> &mdash; this was fixed: multi-mesh slices are now stitched by physical position, not by stride.</li>
+                        <li><strong>FPS counter low</strong> &mdash; drop Sampling from Full to Coarse, or switch Rendering to Basic. Walk-mode raycasting also adds load on huge models.</li>
+                    </ul>
+
+                    <h4>FDS simulation issues</h4>
+                    <p>Problems with the simulation itself &mdash; <code>.fds</code> input syntax, mesh / cell sizing, ramp errors, missing namelists, MPI / OpenMP, run-time <code>ERROR(NNN)</code> messages from FDS, or unexpected physics &mdash; are <em>FDS issues</em>, not viewer issues. The official documentation is the right starting point:</p>
+                    <ul class="help-fds-links">
+                        <li><a href="https://github.com/firemodels/fds/wiki" target="_blank" rel="noopener">firemodels/fds Wiki</a> &mdash; install guide, troubleshooting and FAQ.</li>
+                        <li><a href="https://pages.nist.gov/fds-smv/manuals.html" target="_blank" rel="noopener">FDS &amp; Smokeview Manuals (NIST)</a> &mdash; User's Guide, Technical Reference, Verification and Validation guides.</li>
+                        <li><a href="https://github.com/firemodels/fds/discussions" target="_blank" rel="noopener">FDS GitHub Discussions</a> &mdash; community Q&amp;A; the maintainers and experienced users answer here.</li>
+                        <li><a href="https://github.com/firemodels/fds/issues" target="_blank" rel="noopener">FDS issue tracker</a> &mdash; bug reports for FDS itself (not this viewer).</li>
+                    </ul>
+                    <p class="help-fds-hint">When asking for help on the FDS community channels, attach a minimal reproducing <code>.fds</code> file and the relevant lines from the <code>.out</code> log.</p>
+
+                    <div class="help-callout">
+                        <h4>Issue not listed? Want a new feature?</h4>
+                        <p>For issues with this <em>viewer</em> (rendering, UI, file parsing), report bugs and request new features on the GitHub issue tracker:</p>
+                        <p><a class="help-callout-cta" href="https://github.com/ProfRino/fds-viewer/issues" target="_blank" rel="noopener">github.com/ProfRino/fds-viewer/issues</a></p>
+                        <p class="help-callout-hint">When reporting a bug, please include:</p>
+                        <ul>
+                            <li>What you were doing and what you expected to see</li>
+                            <li>The browser and OS you're using (Chrome 130, Windows 11, etc.)</li>
+                            <li>A screenshot if the issue is visual</li>
+                            <li>The <code>.fds</code> file or a minimal example that triggers it, if possible</li>
+                        </ul>
+                    </div>
+                </section>
+
+                <footer class="help-footer">
+                    <p>Built by Prof Rino Lovreglio, PhD &mdash; Massey University. MIT licensed. See the <button type="button" class="footer-link" onclick="document.getElementById('show-license').click()">licence details</button> for the full text.</p>
+                    <p>Found a bug or have an idea? Open an issue on <a href="https://github.com/ProfRino/fds-viewer/issues" target="_blank" rel="noopener">GitHub</a>.</p>
+                </footer>
+            </article>
+        </div>
+    </div>
+
+    <!-- Output Panel -->
+    <div id="output-panel">
+        <div class="output-layout">
+            <!-- Left Sidebar: Layers + Camera -->
+            <div class="output-sidebar output-sidebar-left">
+                <div class="sidebar-section">
+                    <h3>Layers</h3>
+                    <div class="layer-bulk">
+                        <button class="layer-bulk-btn" id="output-layer-show-all">Show all</button>
+                        <button class="layer-bulk-btn" id="output-layer-hide-all">Hide all</button>
+                    </div>
+                    <div class="layer-list" id="output-layer-list">
+                        <label class="layer-item">
+                            <input type="checkbox" class="output-layer-toggle" data-layer="meshes" checked>
+                            <span class="layer-color" style="background: var(--mesh-color)"></span>
+                            Meshes
+                        </label>
+                        <label class="layer-item">
+                            <input type="checkbox" class="output-layer-toggle" data-layer="obsts" checked>
+                            <span class="layer-color" style="background: var(--obst-color)"></span>
+                            Obstructions
+                        </label>
+                        <label class="layer-item">
+                            <input type="checkbox" class="output-layer-toggle" data-layer="vents" checked>
+                            <span class="layer-color" style="background: var(--vent-color)"></span>
+                            Vents
+                        </label>
+                        <label class="layer-item">
+                            <input type="checkbox" class="output-layer-toggle" data-layer="holes" checked>
+                            <span class="layer-color" style="background: var(--hole-color)"></span>
+                            Holes
+                        </label>
+                        <label class="layer-item">
+                            <input type="checkbox" class="output-layer-toggle" data-layer="devcs" checked>
+                            <span class="layer-color" style="background: var(--devc-color)"></span>
+                            Devices
+                        </label>
+                        <label class="layer-item">
+                            <input type="checkbox" class="output-layer-toggle" data-layer="inits" checked>
+                            <span class="layer-color" style="background: #ff8800"></span>
+                            Init Regions
+                        </label>
+                        <label class="layer-item">
+                            <input type="checkbox" class="output-layer-toggle" data-layer="geoms" checked>
+                            <span class="layer-color" style="background: #64c8ff"></span>
+                            Geometries
+                        </label>
+                        <label class="layer-item">
+                            <input type="checkbox" class="output-layer-toggle" data-layer="hvacs" checked>
+                            <span class="layer-color" style="background: #ffaa00"></span>
+                            HVAC
+                        </label>
+                        <label class="layer-item">
+                            <input type="checkbox" class="output-layer-toggle" data-layer="zones" checked>
+                            <span class="layer-color" style="background: #8866ff"></span>
+                            Zones
+                        </label>
+                        <label class="layer-item">
+                            <input type="checkbox" class="output-layer-toggle" data-layer="fires" checked>
+                            <span class="layer-color" style="background: #ff4400"></span>
+                            Fire Sources
+                        </label>
+                        <label class="layer-item">
+                            <input type="checkbox" class="output-layer-toggle" data-layer="slices" checked>
+                            <span class="layer-color" style="background: #888"></span>
+                            Slices
+                        </label>
+                        <label class="layer-item">
+                            <input type="checkbox" class="output-layer-toggle" data-layer="grid" checked>
+                            <span class="layer-color" style="background: #444466"></span>
+                            Grid
+                        </label>
+                    </div>
+                    <div class="slider-row">
+                        <label>Opacity</label>
+                        <input type="range" id="output-opacity-slider" min="0" max="1" step="0.05" value="1">
+                        <span class="slider-value" id="output-opacity-value">100%</span>
+                    </div>
+                    <!-- OBST edge wireframes (off by default; toggle on for authoring) -->
+                    <label class="layer-item" style="margin-top:6px;">
+                        <input type="checkbox" id="output-show-obst-edges">
+                        Show OBST edges
+                    </label>
+                    <!-- Color / grayscale toggle (default ON — Output is for
+                         viewing simulation results; a neutral backdrop lets
+                         slice/boundary/smoke overlays stand out). -->
+                    <label class="layer-item" style="margin-top:4px;" title="Render the scene desaturated so coloured slice/boundary overlays stand out.">
+                        <input type="checkbox" id="output-scene-grayscale" checked>
+                        Grayscale (no colours)
+                    </label>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3>Camera Views</h3>
+                    <div class="view-grid">
+                        <button class="view-btn" data-output-view="front">Front</button>
+                        <button class="view-btn" data-output-view="back">Back</button>
+                        <button class="view-btn" data-output-view="left">Left</button>
+                        <button class="view-btn" data-output-view="right">Right</button>
+                        <button class="view-btn" data-output-view="top">Top</button>
+                        <button class="view-btn" data-output-view="bottom">Bottom</button>
+                        <button class="view-btn" data-output-view="iso">Iso</button>
+                        <button class="view-btn" id="output-reset-camera">Reset</button>
+                    </div>
+                </div>
+
+                <!-- Walk mode (FPS) — same as 3D Geometry, scoped to the output viewer -->
+                <div class="sidebar-section">
+                    <h3>Walk Mode (FPS)</h3>
+                    <button id="output-walk-mode-btn" class="walk-btn">Enter walk mode</button>
+                    <p class="walk-hint">First-person navigation through the simulation results. Click any horizontal surface to teleport, then use mouse + WASD.</p>
+                    <div class="slider-row">
+                        <label title="Eye height above floor">Eye height</label>
+                        <input type="range" id="output-walk-eye-height" min="0.5" max="3.0" step="0.05" value="1.7">
+                        <span class="slider-value" id="output-walk-eye-height-val">1.70 m</span>
+                    </div>
+                    <div class="slider-row">
+                        <label title="Walking speed in metres per second">Walk speed</label>
+                        <input type="range" id="output-walk-speed" min="0.5" max="5.0" step="0.1" value="1.8">
+                        <span class="slider-value" id="output-walk-speed-val">1.8 m/s</span>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3>Background</h3>
+                    <div class="bg-options">
+                        <button class="output-bg-option active" data-color="#1a1a2e" style="background: #1a1a2e" title="Dark Blue"></button>
+                        <button class="output-bg-option" data-color="#111111" style="background: #111111" title="Black"></button>
+                        <button class="output-bg-option" data-color="#2d2d2d" style="background: #2d2d2d" title="Dark Gray"></button>
+                        <button class="output-bg-option" data-color="#e8e8e8" style="background: #e8e8e8; border-color: #ccc" title="Light Gray"></button>
+                        <button class="output-bg-option" data-color="#ffffff" style="background: #ffffff; border-color: #ccc" title="White"></button>
+                        <button class="output-bg-option" data-color="#1b2838" style="background: #1b2838" title="Steam"></button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Center: 3D Viewer -->
+            <div class="output-main-area">
+                <div id="output-drop-zone" class="output-drop-zone">
+                    <div class="drop-content">
+                        <h2 class="drop-logo">Output Viewer</h2>
+                        <p>Load an .fds file from the 3D Geometry page to see the geometry here in greyscale.</p>
+                        <p>Then use the right panel to load slice data (.sf files).</p>
+                    </div>
+                </div>
+                <div id="output-viewer-container" class="output-viewer-container">
+                    <!-- Walk-mode HUD (FPS) — output viewer -->
+                    <div id="output-walk-hud" style="display:none;">
+                        <div id="output-walk-hud-content">
+                            <div id="output-walk-hud-title">Walk mode</div>
+                            <div id="output-walk-hud-instructions">
+                                <strong>Click</strong> a floor/surface to place yourself.<br>
+                                Then <strong>WASD</strong> to walk, <strong>mouse</strong> to look around.<br>
+                                <strong>Shift</strong> = run, <strong>Space</strong> = jump, <strong>Esc</strong> = exit.
+                            </div>
+                            <div id="output-walk-hud-status"></div>
+                        </div>
+                        <div id="output-walk-crosshair">+</div>
+                    </div>
+
+                    <!-- Projection toggle (bottom-right) — Output viewer -->
+                    <button type="button" id="output-proj-toggle" class="proj-toggle" title="Switch to orthographic projection" aria-label="Projection mode">
+                        <span class="proj-toggle-label">Persp</span>
+                    </button>
+                </div>
+
+                <!-- Viewer overlays: colorbar + play bar (play bar is always visible; disabled until data loaded) -->
+                <div id="output-viewer-overlay" class="output-viewer-overlay">
+                    <!-- Colorbar (top-right) — hidden until slice data loads -->
+                    <div id="output-colorbar" style="display: none;">
+                        <div id="output-colorbar-label"></div>
+                        <div id="output-colorbar-max"></div>
+                        <canvas id="output-colorbar-canvas" width="18" height="180"></canvas>
+                        <div id="output-colorbar-min"></div>
+                    </div>
+                    <!-- Play bar (bottom) -->
+                    <div id="output-viewer-playbar">
+                        <button id="output-vp-play-btn" class="vp-play-btn" disabled title="Play/Pause">&#9654;</button>
+                        <input type="range" id="output-vp-slider" class="vp-slider" min="0" max="0" value="0" disabled>
+                        <span id="output-vp-time" class="vp-time">0.000 s</span>
+                    </div>
+                </div>
+
+                <!-- Clipping panel (shown after file load) -->
+                <div id="output-clip-panel">
+                    <span class="clip-title">Clip</span>
+                    <div class="clip-axis">
+                        <span class="clip-axis-label">X</span>
+                        <div class="clip-num-wrap"><button class="clip-step" data-id="output-clip-xmin-val" data-dir="-1">&#9660;</button><input type="text" class="clip-num-input" id="output-clip-xmin-val"><button class="clip-step" data-id="output-clip-xmin-val" data-dir="1">&#9650;</button></div>
+                        <input type="range" class="clip-slider" id="output-clip-xmin">
+                        <input type="range" class="clip-slider" id="output-clip-xmax">
+                        <div class="clip-num-wrap"><button class="clip-step" data-id="output-clip-xmax-val" data-dir="-1">&#9660;</button><input type="text" class="clip-num-input" id="output-clip-xmax-val"><button class="clip-step" data-id="output-clip-xmax-val" data-dir="1">&#9650;</button></div>
+                    </div>
+                    <div class="clip-axis">
+                        <span class="clip-axis-label">Y</span>
+                        <div class="clip-num-wrap"><button class="clip-step" data-id="output-clip-ymin-val" data-dir="-1">&#9660;</button><input type="text" class="clip-num-input" id="output-clip-ymin-val"><button class="clip-step" data-id="output-clip-ymin-val" data-dir="1">&#9650;</button></div>
+                        <input type="range" class="clip-slider" id="output-clip-ymin">
+                        <input type="range" class="clip-slider" id="output-clip-ymax">
+                        <div class="clip-num-wrap"><button class="clip-step" data-id="output-clip-ymax-val" data-dir="-1">&#9660;</button><input type="text" class="clip-num-input" id="output-clip-ymax-val"><button class="clip-step" data-id="output-clip-ymax-val" data-dir="1">&#9650;</button></div>
+                    </div>
+                    <div class="clip-axis">
+                        <span class="clip-axis-label">Z</span>
+                        <div class="clip-num-wrap"><button class="clip-step" data-id="output-clip-zmin-val" data-dir="-1">&#9660;</button><input type="text" class="clip-num-input" id="output-clip-zmin-val"><button class="clip-step" data-id="output-clip-zmin-val" data-dir="1">&#9650;</button></div>
+                        <input type="range" class="clip-slider" id="output-clip-zmin">
+                        <input type="range" class="clip-slider" id="output-clip-zmax">
+                        <div class="clip-num-wrap"><button class="clip-step" data-id="output-clip-zmax-val" data-dir="-1">&#9660;</button><input type="text" class="clip-num-input" id="output-clip-zmax-val"><button class="clip-step" data-id="output-clip-zmax-val" data-dir="1">&#9650;</button></div>
+                    </div>
+                    <button id="output-clip-reset-btn">Reset</button>
+                </div>
+            </div>
+
+            <!-- Right Sidebar: Slice / Smoke Controls -->
+            <div class="output-sidebar output-sidebar-right">
+                <div class="sidebar-section">
+                    <h3>Data</h3>
+                    <div class="view-grid output-mode-grid">
+                        <button class="view-btn active" id="output-mode-smoke">Soot</button>
+                        <button class="view-btn" id="output-mode-slice">Slice</button>
+                        <button class="view-btn" id="output-mode-boundary">Boundary</button>
+                    </div>
+                </div>
+
+                <!-- Slice controls -->
+                <div id="output-slice-controls" style="display: none;">
+                <div class="sidebar-section">
+                    <h3>Simulation Folder</h3>
+                    <div class="output-file-actions">
+                        <label class="file-button primary-file-button" for="output-slice-folder">Open simulation folder</label>
+                    </div>
+                    <input id="output-slice-folder" type="file" webkitdirectory multiple hidden>
+                    <div class="slice-set-control" id="output-slice-set-control">
+                        <label class="field-label" for="output-slice-set-select">Slice set</label>
+                        <select id="output-slice-set-select" disabled>
+                            <option value="">No slice sets loaded</option>
+                        </select>
+                    </div>
+                    <label class="field-label" for="output-slice-render" title="Basic: slice always wins, ignores depth and paints on top of every solid. Solid-aware: slice respects scene depth — OBSTs in front of the slice plane occlude it correctly.">Rendering</label>
+                    <select id="output-slice-render">
+                        <option value="basic" selected>Basic</option>
+                        <option value="depth">Solid-aware</option>
+                    </select>
+                    <div class="status-line" id="output-status-line">Ready</div>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3>Metadata</h3>
+                    <dl class="metadata">
+                        <div><dt>Quantity</dt><dd id="output-meta-quantity">--</dd></div>
+                        <div><dt>Short Name</dt><dd id="output-meta-short">--</dd></div>
+                        <div><dt>Units</dt><dd id="output-meta-units">--</dd></div>
+                        <div><dt>Indices</dt><dd id="output-meta-indices">--</dd></div>
+                        <div><dt>Frames</dt><dd id="output-meta-frames">--</dd></div>
+                        <div><dt>Plane</dt><dd id="output-meta-plane">--</dd></div>
+                    </dl>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3>Time</h3>
+                    <div class="inline-controls">
+                        <button id="output-play-button" class="icon-button" disabled>
+                            <span id="output-play-label">Play</span>
+                        </button>
+                        <div class="frame-readout" id="output-frame-readout">0.000 s</div>
+                    </div>
+                    <input id="output-frame-slider" type="range" min="0" max="0" value="0" disabled>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3>Display</h3>
+                    <label class="field-label" for="output-color-map">Color Map</label>
+                    <select id="output-color-map">
+                        <option value="diagnostic" selected>Diagnostic</option>
+                        <option value="inferno">Inferno</option>
+                        <option value="viridis">Viridis</option>
+                        <option value="coolwarm">Cool Warm</option>
+                        <option value="gray">Gray</option>
+                    </select>
+
+                    <div class="range-row-header">
+                        <span class="field-label">Range</span>
+                        <button id="output-reset-range" class="range-auto-btn" title="Reset to data range">&#8635; Auto</button>
+                    </div>
+                    <div class="range-grid">
+                        <label for="output-range-min">Min</label>
+                        <input id="output-range-min" type="number" step="any">
+                        <label for="output-range-max">Max</label>
+                        <input id="output-range-max" type="number" step="any">
+                    </div>
+                </div>
+                </div>
+                <!-- /Slice controls -->
+
+                <!-- Smoke3D controls (default visible — Soot is the default mode) -->
+                <div id="output-smoke-controls">
+                    <div class="sidebar-section">
+                        <h3>Simulation Folder</h3>
+                        <div class="output-file-actions">
+                            <label class="file-button primary-file-button" for="output-smoke-folder">Open simulation folder</label>
+                        </div>
+                        <input id="output-smoke-folder" type="file" webkitdirectory multiple hidden>
+                        <div class="status-line" id="output-smoke-status">Ready</div>
+                    </div>
+
+                    <div class="sidebar-section">
+                        <h3>Detected Smoke3D</h3>
+                        <dl class="metadata">
+                            <div><dt>SMV</dt><dd id="output-smoke-meta-smv">--</dd></div>
+                            <div><dt>Meshes</dt><dd id="output-smoke-meta-meshes">--</dd></div>
+                            <div><dt>Soot</dt><dd id="output-smoke-meta-soot">--</dd></div>
+                            <div><dt>HRRPUV</dt><dd id="output-smoke-meta-hrr">--</dd></div>
+                        </dl>
+                        <details id="output-smoke-files-details" style="margin-top:6px;display:none;">
+                            <summary class="field-label" style="cursor:pointer;">Files in folder</summary>
+                            <ul id="output-smoke-files-list" class="file-list"></ul>
+                        </details>
+                    </div>
+
+                    <div class="sidebar-section">
+                        <h3>View</h3>
+                        <label class="field-label" for="output-smoke-quantity">Quantity</label>
+                        <select id="output-smoke-quantity" disabled>
+                            <option value="combined">Soot + HRRPUV</option>
+                            <option value="soot">SOOT DENSITY</option>
+                            <option value="hrrpuv">HRRPUV</option>
+                        </select>
+                        <button id="output-smoke-load" class="file-button primary-file-button" disabled style="margin-top:6px;">Load selected data</button>
+
+                        <label class="field-label" for="output-smoke-render" title="Basic: smoke always wins (can bleed through walls). Solid-aware: scene depth is sampled inside the ray-march so OBSTs correctly hide the smoke behind them.">Rendering</label>
+                        <select id="output-smoke-render">
+                            <option value="basic" selected>Basic</option>
+                            <option value="depth">Solid-aware</option>
+                        </select>
+
+                        <div class="inline-controls" style="margin-top:8px;">
+                            <button id="output-smoke-play" class="icon-button" disabled>
+                                <span id="output-smoke-play-label">Play</span>
+                            </button>
+                            <div class="frame-readout" id="output-smoke-frame-readout">0.000 s</div>
+                            <div class="frame-readout" id="output-smoke-fps-readout" title="Render frames per second (GPU draw rate)">-- fps</div>
+                        </div>
+                        <input id="output-smoke-frame-slider" type="range" min="0" max="0" value="0" disabled>
+
+                        <label class="field-label" for="output-smoke-sample">Sampling</label>
+                        <select id="output-smoke-sample">
+                            <option value="1" selected>Full</option>
+                            <option value="2">Balanced</option>
+                            <option value="3">Fast</option>
+                            <option value="4">Coarse</option>
+                        </select>
+                        <span class="slider-value" id="output-smoke-sample-val" title="Number of ray-march samples per pixel along the smoke volume">200 steps/ray</span>
+
+                        <label class="layer-item" style="margin-top:6px;" title="Linearly blend between consecutive .s3d frames each render to mask the discrete data rate. CPU/GPU cost: small on typical scenes.">
+                            <input type="checkbox" id="output-smoke-smooth">
+                            Smooth motion between frames
+                        </label>
+
+                        <label class="field-label" for="output-smoke-soot-thresh">Soot threshold</label>
+                        <input id="output-smoke-soot-thresh" type="range" min="0" max="255" value="0">
+
+                        <label class="field-label" for="output-smoke-hrr-thresh">HRRPUV threshold</label>
+                        <input id="output-smoke-hrr-thresh" type="range" min="0" max="255" value="42">
+                        <div class="smoke-thresh-meta">
+                            <span class="slider-readout" id="output-smoke-hrr-thresh-kw" title="The current slider position translated into kW/m³ using HRRPUV_MINMAX from the .smv file.">&mdash;</span>
+                            <button type="button" id="output-smoke-hrr-thresh-smv" class="thresh-preset-btn" disabled title="Set the threshold to Smokeview's default cutoff (200 kW/m³). Requires loaded smoke data so HRRPUV_MINMAX is known.">Smokeview default (200 kW/m³)</button>
+                        </div>
+
+                        <label class="field-label" for="output-smoke-soot-op">Soot opacity</label>
+                        <input id="output-smoke-soot-op" type="range" min="0.05" max="1" step="0.05" value="1">
+
+                        <label class="field-label" for="output-smoke-hrr-op">HRRPUV opacity</label>
+                        <input id="output-smoke-hrr-op" type="range" min="0.05" max="1" step="0.05" value="0.85">
+
+                        <div id="output-smoke-volume-controls">
+                            <label class="field-label" style="margin-top:8px;">Soot extinction</label>
+                            <div class="smoke-slider-row">
+                                <input id="output-smoke-vol-base" type="range" min="0.01" max="1" step="0.01" value="0.2">
+                                <span id="output-smoke-vol-base-val" class="slider-readout">0.20</span>
+                            </div>
+                            <label class="field-label">Curve exponent</label>
+                            <div class="smoke-slider-row">
+                                <input id="output-smoke-vol-exp" type="range" min="0.1" max="2" step="0.01" value="0.82">
+                                <span id="output-smoke-vol-exp-val" class="slider-readout">0.82</span>
+                            </div>
+                            <label class="field-label">Density gain</label>
+                            <div class="smoke-slider-row">
+                                <input id="output-smoke-vol-gain" type="range" min="0.5" max="20" step="0.1" value="7.2">
+                                <span id="output-smoke-vol-gain-val" class="slider-readout">7.20</span>
+                            </div>
+
+                            <label class="field-label" style="margin-top:10px;" title="Constant term in the fire (HRRPUV) alpha equation — baseline opacity at zero intensity.">Fire base</label>
+                            <div class="smoke-slider-row">
+                                <input id="output-smoke-fire-base" type="range" min="0.0" max="1" step="0.01" value="0.12">
+                                <span id="output-smoke-fire-base-val" class="slider-readout">0.12</span>
+                            </div>
+                            <label class="field-label" title="Exponent applied to the normalised intensity t — controls how sharply fire ramps up as intensity rises.">Fire exponent</label>
+                            <div class="smoke-slider-row">
+                                <input id="output-smoke-fire-exp" type="range" min="0.1" max="3" step="0.01" value="1.10">
+                                <span id="output-smoke-fire-exp-val" class="slider-readout">1.10</span>
+                            </div>
+                            <label class="field-label" title="Multiplier on the data-driven term — overall fire intensity.">Fire gain</label>
+                            <div class="smoke-slider-row">
+                                <input id="output-smoke-fire-gain" type="range" min="0.5" max="20" step="0.1" value="5.4">
+                                <span id="output-smoke-fire-gain-val" class="slider-readout">5.40</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- /Smoke3D controls -->
+
+                <!-- Boundary (BNDF) controls (hidden by default) -->
+                <div id="output-boundary-controls" style="display: none;">
+                    <div class="sidebar-section">
+                        <h3>Simulation Folder</h3>
+                        <div class="output-file-actions">
+                            <label class="file-button primary-file-button" for="output-boundary-folder">Open simulation folder</label>
+                        </div>
+                        <input id="output-boundary-folder" type="file" webkitdirectory multiple hidden>
+                        <div class="status-line" id="output-boundary-status">Ready</div>
+                    </div>
+
+                    <div class="sidebar-section">
+                        <h3>Detected Boundary</h3>
+                        <dl class="metadata">
+                            <div><dt>SMV</dt><dd id="output-boundary-meta-smv">--</dd></div>
+                            <div><dt>FDS</dt><dd id="output-boundary-meta-fds">--</dd></div>
+                            <div><dt>Meshes</dt><dd id="output-boundary-meta-meshes">--</dd></div>
+                            <div><dt>Objects</dt><dd id="output-boundary-meta-objects">--</dd></div>
+                            <div><dt>BNDF</dt><dd id="output-boundary-meta-bndf">--</dd></div>
+                        </dl>
+                    </div>
+
+                    <div class="sidebar-section">
+                        <h3>View</h3>
+                        <label class="field-label" for="output-boundary-set">Boundary quantity</label>
+                        <select id="output-boundary-set" disabled>
+                            <option value="">No boundary data loaded</option>
+                        </select>
+                        <button id="output-boundary-load" class="file-button primary-file-button" disabled style="margin-top:6px;">Load selected data</button>
+
+                        <div class="inline-controls" style="margin-top:8px;">
+                            <button id="output-boundary-play" class="icon-button" disabled>
+                                <span id="output-boundary-play-label">Play</span>
+                            </button>
+                            <div class="frame-readout" id="output-boundary-frame-readout">0.000 s</div>
+                        </div>
+                        <input id="output-boundary-frame-slider" type="range" min="0" max="0" value="0" disabled>
+
+                        <label class="field-label" for="output-boundary-render" title="Basic: boundary patch always wins, ignores depth and paints on top of every solid. Solid-aware: boundary respects scene depth — OBSTs in front of the patch occlude it correctly.">Rendering</label>
+                        <select id="output-boundary-render">
+                            <option value="basic" selected>Basic</option>
+                            <option value="depth">Solid-aware</option>
+                        </select>
+
+                        <label class="field-label" for="output-boundary-colormap">Color Map</label>
+                        <select id="output-boundary-colormap">
+                            <option value="diagnostic" selected>Diagnostic</option>
+                            <option value="inferno">Inferno</option>
+                            <option value="viridis">Viridis</option>
+                            <option value="coolwarm">Cool Warm</option>
+                            <option value="gray">Gray</option>
+                        </select>
+
+                        <label class="checkbox-row" style="margin-top:6px;">
+                            <input id="output-boundary-robust" type="checkbox">
+                            <span>Robust contrast</span>
+                        </label>
+                        <label class="checkbox-row">
+                            <input id="output-boundary-auto" type="checkbox" checked>
+                            <span>Auto range</span>
+                        </label>
+
+                        <div class="range-grid">
+                            <label for="output-boundary-min">Min</label>
+                            <input id="output-boundary-min" type="number" step="any" value="0" disabled>
+                            <label for="output-boundary-max">Max</label>
+                            <input id="output-boundary-max" type="number" step="any" value="1" disabled>
+                        </div>
+
+                        <label class="field-label" for="output-boundary-opacity">Opacity</label>
+                        <input id="output-boundary-opacity" type="range" min="0.05" max="1" step="0.05" value="0.88">
+                    </div>
+                </div>
+                <!-- /Boundary controls -->
+            </div>
+        </div>
+    </div>
+
     <!-- Footer -->
     <div class="footer-bar">
         <span class="footer-credit">&#169; Prof Rino Lovreglio, PhD &nbsp;|&nbsp; <em>No responsibility is taken for the use or output of these tools.</em></span>
+        <span class="footer-meta">
+            <a href="https://github.com/ProfRino/fds-viewer/blob/main/LICENSE" target="_blank" rel="noopener" class="footer-link" title="MIT License — see GitHub">MIT License</a>
+            &nbsp;·&nbsp;
+            <button type="button" id="show-license" class="footer-link" title="Show licence details in-app">Details</button>
+            &nbsp;·&nbsp;
+            <a href="https://github.com/ProfRino/fds-viewer" target="_blank" rel="noopener" class="footer-link" title="Source code on GitHub">GitHub</a>
+            &nbsp;·&nbsp;
+            <a href="https://github.com/ProfRino/fds-viewer/issues" target="_blank" rel="noopener" class="footer-link" title="Report a bug or request a feature">Report issue</a>
+        </span>
+    </div>
+
+    <!-- License modal (hidden until "Details" is clicked) -->
+    <div id="license-modal" class="license-modal" role="dialog" aria-hidden="true" aria-labelledby="license-modal-title" style="display:none;">
+        <div class="license-modal-backdrop"></div>
+        <div class="license-modal-card">
+            <div class="license-modal-header">
+                <h3 id="license-modal-title">Licence</h3>
+                <button type="button" id="license-close" class="license-close" title="Close">&times;</button>
+            </div>
+            <div class="license-modal-body">
+                <p><strong>MIT License</strong></p>
+                <p>Copyright &copy; 2026 Prof Rino Lovreglio, PhD &mdash; Massey University</p>
+                <p>Permission is hereby granted, free of charge, to any person obtaining a copy
+                    of this software and associated documentation files (the "Software"), to deal
+                    in the Software without restriction, including without limitation the rights
+                    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+                    copies of the Software, and to permit persons to whom the Software is
+                    furnished to do so, subject to the following conditions:</p>
+                <p>The above copyright notice and this permission notice shall be included in
+                    all copies or substantial portions of the Software.</p>
+                <p>THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+                    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+                    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+                    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+                    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+                    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+                    SOFTWARE.</p>
+                <p class="license-disclaimer">No responsibility is taken for the use or output of this software.
+                    All simulation results must be independently verified by a qualified fire
+                    engineer before use in any design or regulatory context.</p>
+                <p class="license-links">
+                    <a href="https://github.com/ProfRino/fds-viewer/blob/main/LICENSE" target="_blank" rel="noopener">View on GitHub</a>
+                    &middot;
+                    <a href="https://opensource.org/licenses/MIT" target="_blank" rel="noopener">About the MIT License</a>
+                </p>
+            </div>
+        </div>
     </div>
 
     <input type="file" id="file-input" accept=".fds,.txt">
@@ -280,13 +1166,22 @@
     <!-- Three.js (CDN) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
 
     <!-- Application Scripts -->
-    <script src="js/sample-data.js"></script>
-    <script src="js/fds-parser.js"></script>
-    <script src="js/viewer.js"></script>
-    <script src="js/fire-panel.js"></script>
-    <script src="js/mesh-panel.js"></script>
-    <script src="js/app.js"></script>
+    <script src="js/sample-data.js?v=20260517p"></script>
+    <script src="js/fds-parser.js?v=20260517p"></script>
+    <script src="js/viewer.js?v=20260520G"></script>
+    <script src="js/fds-linter.js?v=20260517p"></script>
+    <script src="js/fire-panel.js?v=20260519AE"></script>
+    <script src="js/mesh-panel.js?v=20260517p"></script>
+    <script src="js/slice-reader.js?v=20260517p"></script>
+    <script src="js/slice-renderer.js?v=20260520D"></script>
+    <script src="js/smoke3d-reader.js?v=20260517p"></script>
+    <script src="js/smoke3d-overlay.js?v=20260519AM"></script>
+    <script src="js/boundary-reader.js?v=20260518a"></script>
+    <script src="js/boundary-overlay.js?v=20260520H"></script>
+    <script src="js/output-page.js?v=20260520I"></script>
+    <script src="js/app.js?v=20260520G"></script>
 </body>
 </html>

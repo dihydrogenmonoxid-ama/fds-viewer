@@ -44,14 +44,20 @@ function buildFirePanel(data) {
 // ─── Overview bar ─────────────────────────────────────────────────────────────
 
 function buildOverview(data) {
-    const chid  = data.head.CHID  || '—';
-    const title = data.head.TITLE || '';
-    const tEnd  = data.time.T_END != null ? data.time.T_END + ' s' : '—';
-    const tmpa  = data.misc.TMPA  != null ? data.misc.TMPA  + ' °C' : '20 °C';
-    const nMesh = data.meshes.length;
-    const cells = data.meshes.reduce((s, m) => s + (m.ijk ? m.ijk[0]*m.ijk[1]*m.ijk[2] : 0), 0);
+    // Each &HEAD/&TIME/&MISC may be absent on minimal or malformed inputs —
+    // guard so the whole panel doesn't die on the first property read.
+    const head  = data.head  || {};
+    const time  = data.time  || {};
+    const misc  = data.misc  || {};
+    const meshes = data.meshes || [];
+    const chid  = head.CHID  || '—';
+    const title = head.TITLE || '';
+    const tEnd  = time.T_END != null ? time.T_END + ' s' : '—';
+    const tmpa  = misc.TMPA  != null ? misc.TMPA  + ' °C' : '20 °C';
+    const nMesh = meshes.length;
+    const cells = meshes.reduce((s, m) => s + (m.ijk ? m.ijk[0]*m.ijk[1]*m.ijk[2] : 0), 0);
     // SURF_DEFAULT: if non-INERT, all unspecified surfaces change — flag it prominently
-    const surfDef = data.misc.SURF_DEFAULT || null;
+    const surfDef = misc.SURF_DEFAULT || null;
 
     return `
     <div class="fp-overview">
@@ -106,12 +112,15 @@ function buildReacSection(data) {
         const formula = spec ? spec.formula : null;
         const fuelDisplay = esc(fuelId) + (formula ? ` <span style="color:var(--text-muted)">(${formatFormula(formula)})</span>` : '');
 
-        const hoc      = p.HEAT_OF_COMBUSTION;
-        const soot     = p.SOOT_YIELD;
-        const co       = p.CO_YIELD;
-        const co2      = p.CO2_YIELD;
-        const radFrac  = p.RADIATIVE_FRACTION;
-        const eatm     = p.EPUMO2;
+        // Coerce — parser may leave numeric params as strings on unusual inputs,
+        // and toFixed() on a string throws. Falls back to null for NaN.
+        const num = v => { if (v == null) return null; const n = Number(v); return isFinite(n) ? n : null; };
+        const hoc      = num(p.HEAT_OF_COMBUSTION);
+        const soot     = num(p.SOOT_YIELD);
+        const co       = num(p.CO_YIELD);
+        const co2      = num(p.CO2_YIELD);
+        const radFrac  = num(p.RADIATIVE_FRACTION);
+        const eatm     = num(p.EPUMO2);
 
         // Approximate combustion equation for simple fuels with FORMULA
         const eqn = formula ? buildCombustionEquation(formula) : null;
@@ -170,12 +179,14 @@ function buildFireSourcesSection(data, fireSurfs) {
 
         let totalArea = linkedVents.reduce((sum, v) => sum + ventFaceArea(v), 0);
 
-        // Peak HRR: HRRPUA × area × max(F) when a ramp scales it
+        // Peak HRR: HRRPUA × area × max(F) when a ramp scales it. Filter to
+        // finite F values — a non-numeric point would otherwise propagate NaN.
         let peakF = 1;
         if (ramp && ramp.points.length) {
-            peakF = Math.max(...ramp.points.map(pt => pt.F));
+            const fs = ramp.points.map(pt => Number(pt.F)).filter(isFinite);
+            if (fs.length) peakF = Math.max(...fs);
         }
-        const peakHRR = hrrpua && totalArea > 0 ? hrrpua * totalArea * peakF : null;
+        const peakHRR = hrrpua && totalArea > 0 && isFinite(peakF) ? hrrpua * totalArea * peakF : null;
 
         let growthHtml = '—';
         if (ramp && ramp.points.length) {
@@ -606,7 +617,7 @@ function buildSurfacesSection(data, surfs) {
 
         matlIds.forEach((mid, i) => {
             const thick = thicks[i];
-            const matlObj = data.matls[mid];
+            const matlObj = (data.matls || {})[mid];
             // BURN badge: a material is "burnable" if it has any pyrolysis
             // kinetics. FDS supports two parametrisations -- a simplified
             // REFERENCE_TEMPERATURE / HEAT_OF_REACTION pair, and the full
@@ -771,37 +782,180 @@ function buildCodePanel(text, filename) {
     // IMPORTANT: don't join with "\n" — the spans are display:block and
     // <pre> would render the newline as an extra blank line between them.
     const linesHtml = highlighted.split('\n')
-        .map(l => `<span class="fp-fds-line">${l || ' '}</span>`)
+        .map((l, i) => `<span class="fp-fds-line" data-line="${i + 1}">${l || ' '}</span>`)
         .join('');
 
     const card = `
-        <div class="fp-card">
+        <div class="fp-card" id="fp-code-card">
             <div class="fp-card-title">
                 Source Code
-                <button class="fp-copy-btn" id="fp-copy-fds">Copy all</button>
+                <div class="fp-card-btns" id="fp-view-btns">
+                    <button class="fp-copy-btn" id="fp-copy-fds">Copy all</button>
+                    <button class="fp-copy-btn fp-save-btn" id="fp-save-annotated">&#x2913; Save annotated</button>
+                    <button class="fp-copy-btn fp-edit-btn" id="fp-edit-fds">&#x270E; Edit</button>
+                </div>
+                <div class="fp-card-btns" id="fp-edit-btns" style="display:none">
+                    <span class="fp-edit-mode-badge">EDITING</span>
+                    <button class="fp-copy-btn fp-apply-btn" id="fp-apply-fds">&#x21BA; Apply &amp; reload</button>
+                    <button class="fp-copy-btn fp-view-return-btn" id="fp-view-fds">&#x2713; View</button>
+                </div>
             </div>
-            <div class="fp-code-search">
-                <input type="text" id="fp-code-search"
-                    placeholder="Search…  e.g. HRRPUA, SURF_ID, MESH"
-                    autocomplete="off" spellcheck="false">
-                <span class="fp-search-count" id="fp-search-count"></span>
+            <div class="fp-code-split" id="fp-code-split">
+                <div class="fp-code-body" id="fp-code-body">
+                    <div class="fp-code-search" id="fp-code-search-bar">
+                        <input type="text" id="fp-code-search"
+                            placeholder="Search…  e.g. HRRPUA, SURF_ID, MESH"
+                            autocomplete="off" spellcheck="false">
+                        <span class="fp-search-count" id="fp-search-count"></span>
+                    </div>
+                    <pre class="fp-fds-source" id="fp-fds-source-pre"><code id="fp-fds-source-code">${linesHtml}</code></pre>
+                    <div class="fp-edit-wrapper" id="fp-edit-wrapper" style="display:none">
+                        <div class="fp-edit-highlight" id="fp-edit-highlight" aria-hidden="true"></div>
+                        <textarea class="fp-fds-edit" id="fp-fds-edit-area"
+                            spellcheck="false" autocorrect="off" autocapitalize="off"
+                            autocomplete="off"></textarea>
+                    </div>
+                </div>
             </div>
-            <pre class="fp-fds-source"><code id="fp-fds-source-code">${linesHtml}</code></pre>
         </div>`;
 
     wrap.innerHTML = overview + card;
+
+    // ── Edit mode ─────────────────────────────────────────────────────────────
+    let liveText = text;
+
+    function renderSource(t) {
+        const h = highlightFds(t);
+        const lh = h.split('\n')
+            .map((l, i) => `<span class="fp-fds-line" data-line="${i + 1}">${l || ' '}</span>`)
+            .join('');
+        const codeEl = document.getElementById('fp-fds-source-code');
+        if (codeEl) codeEl.innerHTML = lh;
+    }
+
+    // Render highlighted text for the edit overlay using display:block spans (no \n
+    // between them) so each span is exactly one line-height tall and matches the
+    // textarea's cursor positions.
+    function _renderEditHighlight(t) {
+        return highlightFds(t)
+            .split('\n')
+            .map(l => `<span class="fp-edit-line">${l || '​'}</span>`)
+            .join('');
+    }
+
+    function enterEditMode() {
+        window._fdsEditMode = true;
+        const cc = document.getElementById('fp-code-card');
+        if (cc) cc.classList.add('fp-edit-mode');
+        _clearLintHighlights();
+        const ea = document.getElementById('fp-fds-edit-area');
+        if (ea) ea.value = liveText;
+        const hl = document.getElementById('fp-edit-highlight');
+        if (hl) hl.innerHTML = _renderEditHighlight(liveText);
+        const ew = document.getElementById('fp-edit-wrapper');
+        if (ew) ew.style.display = '';
+        const pre = document.getElementById('fp-fds-source-pre');
+        if (pre) pre.style.display = 'none';
+        const sb = document.getElementById('fp-code-search-bar');
+        if (sb) sb.style.display = 'none';
+        const vb = document.getElementById('fp-view-btns');
+        if (vb) vb.style.display = 'none';
+        const eb = document.getElementById('fp-edit-btns');
+        if (eb) eb.style.display = 'flex';
+    }
+
+    function exitEditMode(newText) {
+        window._fdsEditMode = false;
+        const cc = document.getElementById('fp-code-card');
+        if (cc) cc.classList.remove('fp-edit-mode');
+        if (newText !== undefined) {
+            liveText = newText;
+            renderSource(liveText);
+            document.dispatchEvent(new CustomEvent('fds-text-updated', { detail: { text: liveText } }));
+        }
+        const ew = document.getElementById('fp-edit-wrapper');
+        if (ew) ew.style.display = 'none';
+        const pre = document.getElementById('fp-fds-source-pre');
+        if (pre) pre.style.display = '';
+        const sb = document.getElementById('fp-code-search-bar');
+        if (sb) sb.style.display = '';
+        const vb = document.getElementById('fp-view-btns');
+        if (vb) vb.style.display = 'flex';
+        const eb = document.getElementById('fp-edit-btns');
+        if (eb) eb.style.display = 'none';
+    }
+
+    const editBtn = document.getElementById('fp-edit-fds');
+    if (editBtn) editBtn.addEventListener('click', enterEditMode);
+
+    const viewReturnBtn = document.getElementById('fp-view-fds');
+    if (viewReturnBtn) viewReturnBtn.addEventListener('click', () => {
+        const ea = document.getElementById('fp-fds-edit-area');
+        exitEditMode(ea ? ea.value : undefined);
+    });
+
+    const applyBtn = document.getElementById('fp-apply-fds');
+    if (applyBtn) applyBtn.addEventListener('click', () => {
+        const ea = document.getElementById('fp-fds-edit-area');
+        const newText = ea ? ea.value : liveText;
+        exitEditMode(newText);
+        if (typeof window._fdsReload === 'function') {
+            applyBtn.textContent = 'Reloading…';
+            setTimeout(() => window._fdsReload(newText, filename), 50);
+        }
+    });
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // Live syntax highlight while editing
+    const _editArea = document.getElementById('fp-fds-edit-area');
+    const _editHl   = document.getElementById('fp-edit-highlight');
+    if (_editArea && _editHl) {
+        _editArea.addEventListener('input', () => {
+            _editHl.innerHTML = _renderEditHighlight(_editArea.value);
+        });
+        _editArea.addEventListener('scroll', () => {
+            _editHl.scrollTop  = _editArea.scrollTop;
+            _editHl.scrollLeft = _editArea.scrollLeft;
+        });
+    }
 
     // Wire up the copy button
     const btn = document.getElementById('fp-copy-fds');
     if (btn) {
         btn.addEventListener('click', () => {
-            navigator.clipboard.writeText(text).then(() => {
+            navigator.clipboard.writeText(liveText).then(() => {
                 btn.textContent = 'Copied!';
                 setTimeout(() => { btn.textContent = 'Copy all'; }, 1200);
             }).catch(() => {
                 btn.textContent = 'Copy failed';
                 setTimeout(() => { btn.textContent = 'Copy all'; }, 1200);
             });
+        });
+    }
+
+    // Shared download helper
+    const _doSaveAnnotated = (findings) => {
+        const out  = _annotatedFds(liveText, findings, filename);
+        const blob = new Blob([out], { type: 'text/plain' });
+        const url  = URL.createObjectURL(blob);
+        const a = Object.assign(document.createElement('a'), {
+            href: url,
+            download: (filename || 'model').replace(/\.fds$/i, '') + '_linted.fds',
+        });
+        a.click();
+        URL.revokeObjectURL(url);
+    };
+
+
+    // Wire up Save annotated — uses the static linter to flag findings,
+    // then exports the source with inline `! ⚠ …` comments.
+    const saveBtn = document.getElementById('fp-save-annotated');
+    if (saveBtn) {
+        saveBtn.addEventListener('click', () => {
+            const findings = (typeof fdsLint === 'function') ? fdsLint(liveText) : [];
+            _doSaveAnnotated(findings);
+            saveBtn.textContent = '✓ Saved!';
+            setTimeout(() => { saveBtn.innerHTML = '&#x2913; Save annotated'; }, 1500);
         });
     }
 
@@ -828,6 +982,109 @@ function buildCodePanel(text, filename) {
             if (firstMatch) firstMatch.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         });
     }
+}
+
+// ─── Linter UI helpers ────────────────────────────────────────────────────────
+
+function _applyLintHighlights(findings) {
+    _clearLintHighlights();
+    const lineMap = {};
+    const rank = { ERROR: 3, WARNING: 2, INFO: 1 };
+    for (const f of findings) {
+        if (!f.line || f.line < 1) continue;
+        const end = (f.lineEnd && f.lineEnd >= f.line) ? f.lineEnd : f.line;
+        for (let ln = f.line; ln <= end; ln++) {
+            if (!lineMap[ln] || rank[f.severity] > rank[lineMap[ln]]) lineMap[ln] = f.severity;
+        }
+    }
+    for (const [lineNum, sev] of Object.entries(lineMap)) {
+        const el = document.querySelector(`.fp-fds-line[data-line="${lineNum}"]`);
+        if (el) el.classList.add(`fp-lint-${sev.toLowerCase()}`);
+    }
+}
+
+function _clearLintHighlights() {
+    document.querySelectorAll('.fp-fds-line.fp-lint-error, .fp-fds-line.fp-lint-warning, .fp-fds-line.fp-lint-info, .fp-fds-line.fp-lint-active')
+        .forEach(el => el.classList.remove('fp-lint-error', 'fp-lint-warning', 'fp-lint-info', 'fp-lint-active'));
+}
+
+function _renderLintResults(findings) {
+    const counts = { ERROR: 0, WARNING: 0, INFO: 0 };
+    for (const f of findings) counts[f.severity] = (counts[f.severity] || 0) + 1;
+
+    const badges = [];
+    if (counts.ERROR)   badges.push(`<span class="fp-sev-badge fp-sev-error">${counts.ERROR} error${counts.ERROR   !== 1 ? 's' : ''}</span>`);
+    if (counts.WARNING) badges.push(`<span class="fp-sev-badge fp-sev-warning">${counts.WARNING} warning${counts.WARNING !== 1 ? 's' : ''}</span>`);
+    if (counts.INFO)    badges.push(`<span class="fp-sev-badge fp-sev-info">${counts.INFO} info</span>`);
+
+    if (!findings.length) {
+        return `<div class="fp-debug-clean">
+            <button class="fp-debug-close" id="fp-debug-close" title="Close">&#x2715;</button>
+            <div class="fp-no-issues">&#x2713; No issues found — file looks clean.</div>
+        </div>`;
+    }
+
+    const rows = findings.map(f => {
+        const sc = f.severity.toLowerCase();
+        const lineAttr = f.line > 0 ? ` data-line="${f.line}"` : '';
+        const lineRange = f.line > 0
+            ? (f.lineEnd && f.lineEnd > f.line ? `lines ${f.line}–${f.lineEnd}` : `line ${f.line}`)
+            : '';
+        const lineLabel = lineRange ? `<span class="fp-finding-line">${lineRange}</span>` : '';
+        const hint = f.hint ? `<div class="fp-finding-hint">→ ${esc(f.hint)}</div>` : '';
+        return `<div class="fp-finding"${lineAttr}>
+            <div class="fp-finding-top">
+                <span class="fp-sev-badge fp-sev-${sc}">${f.severity}</span>
+                ${lineLabel}
+            </div>
+            <div class="fp-finding-text">
+                <div class="fp-finding-msg">${esc(f.message)}</div>
+                ${hint}
+            </div>
+        </div>`;
+    }).join('');
+
+    return `<div class="fp-debug-header">
+        <div class="fp-debug-badges">${badges.join('')}</div>
+        <button class="fp-debug-close" id="fp-debug-close" title="Close">&#x2715;</button>
+    </div>
+    <div class="fp-findings-list">${rows}</div>`;
+}
+
+function _annotatedFds(text, findings, filename) {
+    const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+    const counts = { ERROR: 0, WARNING: 0, INFO: 0 };
+    for (const f of findings) counts[f.severity] = (counts[f.severity] || 0) + 1;
+
+    const bar = '! ' + '═'.repeat(68);
+    const header = [
+        bar,
+        `! FDS Viewer Linter Report — ${filename || 'untitled.fds'}`,
+        `! ${counts.ERROR} error${counts.ERROR!==1?'s':''}, ${counts.WARNING} warning${counts.WARNING!==1?'s':''}, ${counts.INFO} info`,
+        bar,
+    ];
+    if (findings.length) {
+        header.push('!');
+        for (const f of findings) {
+            const loc = f.line > 0 ? `line ${String(f.line).padStart(4)}` : '        ';
+            header.push(`! [${f.severity.padEnd(7)}] ${loc}  ${f.message}`);
+            if (f.hint) header.push(`!                    → ${f.hint}`);
+        }
+        header.push('!');
+        header.push(bar);
+    }
+
+    // Insert inline comments above each flagged line (reverse order preserves indices)
+    const sorted = [...findings].filter(f => f.line > 0).sort((a, b) => b.line - a.line);
+    for (const f of sorted) {
+        const idx = f.line - 1;
+        if (idx < 0 || idx > lines.length) continue;
+        const commentLines = [`! [${f.severity}] ${f.message}`];
+        if (f.hint) commentLines.push(`! → ${f.hint}`);
+        lines.splice(idx, 0, ...commentLines);
+    }
+
+    return [...header, ...lines].join('\n');
 }
 
 // ─── FDS source-code disclosure helpers ──────────────────────────────────────
@@ -879,12 +1136,18 @@ function highlightFds(text) {
 
         // Tokens that ONLY apply inside a namelist record
         if (inside) {
-            // Single-quoted string literal
+            // Single-quoted string literal. Stop the scan at end-of-line so
+            // an unterminated string (a typo like ID='STEEL, COLOR=...) does
+            // NOT produce one <span> covering many lines — the caller splits
+            // on \n and a multi-line span would emit broken HTML, making
+            // wrapped content escape its fp-fds-line block.
             if (ch === "'") {
                 let j = i + 1;
-                while (j < n && text[j] !== "'") j++;
-                out += `<span class="fp-str">${escSeg(text.slice(i, j + 1))}</span>`;
-                i = j + 1;
+                while (j < n && text[j] !== "'" && text[j] !== '\n') j++;
+                const closed = j < n && text[j] === "'";
+                const end = closed ? j + 1 : j;
+                out += `<span class="fp-str">${escSeg(text.slice(i, end))}</span>`;
+                i = end;
                 continue;
             }
 

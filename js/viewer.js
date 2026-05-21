@@ -159,6 +159,9 @@ class FDSViewer {
         this.fdsData = null;
         this.boundingBox = null;
 
+        // Clipping planes (initialised in _init once THREE is ready)
+        this.clipPlanes = null;
+
         // Selection
         this.selectedObject = null;
         this.highlightMaterial = new THREE.MeshPhongMaterial({
@@ -168,6 +171,45 @@ class FDSViewer {
             emissive: 0x444400,
         });
 
+        // OBST edge wireframe overlay — hidden by default so seams between
+        // adjacent OBSTs (used to construct walls with cutouts) don't show.
+        // Toggled via setShowObstEdges().
+        this.showObstEdges = false;
+
+        // Smoke volume rendering mode — false = legacy single-pass (smoke
+        // always wins, can bleed through walls); true = two-pass with scene
+        // depth occlusion so OBSTs correctly hide smoke behind them. Toggled
+        // via setSmokeDepthEnabled() from the Output smoke "Rendering"
+        // dropdown. Default OFF (Basic) — faster and never loses smoke
+        // behind solids in the single-pass back-face approximation.
+        this.smokeDepthEnabled = false;
+        this._depthTarget = null;
+
+        // FPS tracker — updated once per second from the _animate loop.
+        // Read via this.fps; UI panels can poll on a setInterval.
+        this.fps = 0;
+        this._fpsFrameCount = 0;
+        this._fpsLastUpdate = (typeof performance !== 'undefined') ? performance.now() : 0;
+
+        // ── Walk mode (FPS) ───────────────────────────────────────────────
+        this.walkMode = false;       // true once user enters walk mode
+        this.walkPlaced = false;     // true after user has clicked a surface
+        this.walkControls = null;    // PointerLockControls (lazy)
+        this.walkKeys = {};          // currently-pressed keys (lowercase)
+        this.walkVelocityY = 0;      // vertical velocity (m/s, gravity)
+        this.walkEyeHeight = 1.7;    // metres above floor
+        this.walkSpeed = 1.8;        // m/s base walk speed
+        this.walkRunMult = 2.5;      // shift multiplier
+        this.walkRadius = 0.3;       // horizontal collision radius (m)
+        this.walkJumpVel = 4.0;      // m/s (≈0.8 m jump height)
+        this.walkGravity = 9.81;
+        this.walkRaycaster = new THREE.Raycaster();
+        this.walkRaycaster.firstHitOnly = false;
+        this.walkPrevTime = 0;       // for dt in animate loop
+        this.walkSavedCamera = null; // restore on exit
+        this._walkOnKeyDown = null;  // listener refs so we can remove
+        this._walkOnKeyUp = null;
+
         this._init();
     }
 
@@ -176,15 +218,24 @@ class FDSViewer {
         this.scene = new THREE.Scene();
         this.scene.background = new THREE.Color(0x1a1a2e);
 
-        // Renderer
-        this.renderer = new THREE.WebGLRenderer({ antialias: true });
+        // Renderer — request WebGL2 for DataTexture3D / volume rendering support
+        const _canvas2 = document.createElement('canvas');
+        const _ctx2 = _canvas2.getContext('webgl2', { antialias: true });
+        this.renderer = _ctx2
+            ? new THREE.WebGLRenderer({ canvas: _canvas2, context: _ctx2, antialias: true })
+            : new THREE.WebGLRenderer({ antialias: true });
         this.renderer.setPixelRatio(window.devicePixelRatio);
         this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
-        this.renderer.shadowMap.enabled = true;
-        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        // Shadow mapping is disabled. With thin coplanar OBSTs (the typical
+        // way FDS walls with door/window cutouts are authored), the directional
+        // light's shadow projects each wall onto its perpendicular neighbour,
+        // producing visible dark triangles at every interior corner. The
+        // ambient + hemi + two directional lights below give a perfectly readable
+        // shaded scene without those artefacts.
+        this.renderer.shadowMap.enabled = false;
         this.container.appendChild(this.renderer.domElement);
 
-        // Camera
+        // Camera — perspective by default; setProjection() swaps to/from ortho.
         this.camera = new THREE.PerspectiveCamera(
             50,
             this.container.clientWidth / this.container.clientHeight,
@@ -192,6 +243,7 @@ class FDSViewer {
             1000
         );
         this.camera.position.set(5, 5, 5);
+        this.projectionMode = 'perspective';
 
         // Controls (OrbitControls)
         this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
@@ -237,6 +289,17 @@ class FDSViewer {
         window.addEventListener('resize', () => this._onResize());
         this.renderer.domElement.addEventListener('click', (e) => this._onClick(e));
 
+        // Clipping planes: xmin, xmax, ymin(FDS Y=ThreeZ), ymax, zmin(FDS Z=ThreeY), zmax
+        this.clipPlanes = [
+            new THREE.Plane(new THREE.Vector3(1, 0, 0), 0),
+            new THREE.Plane(new THREE.Vector3(-1, 0, 0), 0),
+            new THREE.Plane(new THREE.Vector3(0, 0, 1), 0),
+            new THREE.Plane(new THREE.Vector3(0, 0, -1), 0),
+            new THREE.Plane(new THREE.Vector3(0, 1, 0), 0),
+            new THREE.Plane(new THREE.Vector3(0, -1, 0), 0),
+        ];
+        this.renderer.clippingPlanes = [];
+
         // Animation loop
         this._animate();
     }
@@ -246,10 +309,10 @@ class FDSViewer {
         const ambient = new THREE.AmbientLight(0xffffff, 0.4);
         this.scene.add(ambient);
 
-        // Directional light 1
+        // Directional light 1 (no shadow casting — see _init for rationale)
         const dir1 = new THREE.DirectionalLight(0xffffff, 0.6);
         dir1.position.set(10, 20, 10);
-        dir1.castShadow = true;
+        dir1.castShadow = false;
         this.scene.add(dir1);
 
         // Directional light 2
@@ -264,9 +327,98 @@ class FDSViewer {
 
     _animate() {
         requestAnimationFrame(() => this._animate());
-        this._handleKeyboardMovement();
-        this.controls.update();
-        this.renderer.render(this.scene, this.camera);
+        if (this.walkMode) {
+            const now = performance.now();
+            const dt = Math.min(0.1, (now - (this.walkPrevTime || now)) / 1000);
+            this.walkPrevTime = now;
+            this._walkUpdate(dt);
+        } else {
+            this.walkPrevTime = 0;
+            this._handleKeyboardMovement();
+            this.controls.update();
+        }
+        this._renderScene();
+
+        // FPS — count frames in a rolling 1 s window. The UI polls this.fps.
+        this._fpsFrameCount++;
+        const nowFps = performance.now();
+        const elapsed = nowFps - this._fpsLastUpdate;
+        if (elapsed >= 1000) {
+            this.fps = Math.round((this._fpsFrameCount * 1000) / elapsed);
+            this._fpsFrameCount = 0;
+            this._fpsLastUpdate = nowFps;
+        }
+    }
+
+    /**
+     * Single- vs two-pass renderer. When smokeDepthEnabled is true AND smoke
+     * volumes exist, render the scene WITHOUT smoke to an off-screen depth
+     * target first, bind that depth texture to every smoke material, then
+     * render the full scene to the canvas. The smoke ray-march reads the
+     * scene depth and stops at solids — the "depth-aware" mode.
+     */
+    _renderScene() {
+        const smokeNodes = [];
+        if (this.smokeDepthEnabled) {
+            this.scene.traverse(n => { if (n._isSmokeVolume) smokeNodes.push(n); });
+        }
+
+        if (smokeNodes.length > 0) {
+            this._ensureDepthTarget();
+            // Pass 1 — depth-only (smoke hidden)
+            const wasVisible = smokeNodes.map(n => n.visible);
+            smokeNodes.forEach(n => { n.visible = false; });
+            this.renderer.setRenderTarget(this._depthTarget);
+            this.renderer.clear(true, true, false);
+            this.renderer.render(this.scene, this.camera);
+            // Restore visibility and re-bind depth uniform on each smoke material
+            for (let i = 0; i < smokeNodes.length; i++) {
+                smokeNodes[i].visible = wasVisible[i];
+                const m = smokeNodes[i].material;
+                if (m && m.uniforms) {
+                    if (m.uniforms.sceneDepth)   m.uniforms.sceneDepth.value   = this._depthTarget.depthTexture;
+                    if (m.uniforms.uResolution)  m.uniforms.uResolution.value.set(this._depthTarget.width, this._depthTarget.height);
+                    if (m.uniforms.depthEnabled) m.uniforms.depthEnabled.value = 1;
+                }
+            }
+            // Pass 2 — full scene to canvas
+            this.renderer.setRenderTarget(null);
+            this.renderer.render(this.scene, this.camera);
+        } else {
+            // Single pass: make sure any leftover smoke materials report
+            // depthEnabled=0 so they don't try to sample a stale texture.
+            this.scene.traverse(n => {
+                if (n._isSmokeVolume && n.material && n.material.uniforms && n.material.uniforms.depthEnabled) {
+                    n.material.uniforms.depthEnabled.value = 0;
+                }
+            });
+            this.renderer.setRenderTarget(null);
+            this.renderer.render(this.scene, this.camera);
+        }
+    }
+
+    /** Lazy-create and resize the depth render target to match the canvas. */
+    _ensureDepthTarget() {
+        const dpr = this.renderer.getPixelRatio();
+        const w = Math.max(1, Math.floor(this.container.clientWidth * dpr));
+        const h = Math.max(1, Math.floor(this.container.clientHeight * dpr));
+        if (!this._depthTarget) {
+            this._depthTarget = new THREE.WebGLRenderTarget(w, h);
+            // 24-bit packed depth — kills the visible "comb"/stair-step at OBST
+            // edges that the 16-bit UnsignedShortType produced when the ray
+            // marched onto a wall surface.
+            this._depthTarget.depthTexture = new THREE.DepthTexture(w, h);
+            this._depthTarget.depthTexture.type = THREE.UnsignedInt248Type;
+            this._depthTarget.depthTexture.format = THREE.DepthStencilFormat;
+        } else if (this._depthTarget.width !== w || this._depthTarget.height !== h) {
+            this._depthTarget.setSize(w, h);
+        }
+    }
+
+    /** Public setter for the Solid-aware rendering mode (driven by the Output
+     *  page's smoke "Rendering" dropdown). */
+    setSmokeDepthEnabled(enabled) {
+        this.smokeDepthEnabled = !!enabled;
     }
 
     _handleKeyboardMovement() {
@@ -315,12 +467,104 @@ class FDSViewer {
     _onResize() {
         const w = this.container.clientWidth;
         const h = this.container.clientHeight;
-        this.camera.aspect = w / h;
-        this.camera.updateProjectionMatrix();
+        if (this.camera.isOrthographicCamera) {
+            // Preserve the orthographic view's vertical extent and rebuild the
+            // horizontal extent from the new aspect, so resizing the window
+            // doesn't squash the scene.
+            const aspect = w / h;
+            const halfH = (this.camera.top - this.camera.bottom) / 2;
+            const halfW = halfH * aspect;
+            this.camera.left = -halfW;
+            this.camera.right = halfW;
+            this.camera.updateProjectionMatrix();
+        } else {
+            this.camera.aspect = w / h;
+            this.camera.updateProjectionMatrix();
+        }
         this.renderer.setSize(w, h);
     }
 
+    /**
+     * Swap between perspective and orthographic cameras while keeping the
+     * eye, target and visible-area roughly the same. Re-binds OrbitControls
+     * to the new camera so panning/orbiting keep working without a remount.
+     */
+    setProjection(mode) {
+        const want = (mode === 'orthographic') ? 'orthographic' : 'perspective';
+        if (this.projectionMode === want) return;
+        const target   = this.controls.target.clone();
+        const position = this.camera.position.clone();
+        const aspect   = (this.container.clientWidth || 1) / (this.container.clientHeight || 1);
+
+        if (want === 'orthographic') {
+            // Match the perspective frustum at the focal point so the model
+            // appears the same size at the moment of switching.
+            const dist = position.distanceTo(target);
+            const fov  = THREE.MathUtils.degToRad(50);
+            const halfH = Math.tan(fov / 2) * dist;
+            const halfW = halfH * aspect;
+            this.camera = new THREE.OrthographicCamera(-halfW, halfW, halfH, -halfH, 0.01, 1000);
+        } else {
+            this.camera = new THREE.PerspectiveCamera(50, aspect, 0.01, 1000);
+        }
+        this.camera.position.copy(position);
+        this.camera.lookAt(target);
+
+        if (this.controls) this.controls.dispose();
+        this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
+        this.controls.enableDamping = true;
+        this.controls.dampingFactor = 0.1;
+        this.controls.screenSpacePanning = true;
+        this.controls.target.copy(target);
+
+        this.projectionMode = want;
+        this._onResize();
+    }
+    getProjection() { return this.projectionMode || 'perspective'; }
+
     _onClick(event) {
+        // Swallow clicks while the pointer is locked — PointerLockControls
+        // owns the re-lock behaviour after Esc.
+        if (this.walkMode && this.walkPlaced && this.walkControls && this.walkControls.isLocked) {
+            return;
+        }
+        // Walk-mode placement: first click teleports the walker to that point.
+        // Subsequent clicks in walk mode are swallowed (PointerLockControls owns
+        // the click → re-lock behaviour handled by the browser itself).
+        if (this.walkMode && !this.walkPlaced) {
+            const rect = this.renderer.domElement.getBoundingClientRect();
+            this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+            this.raycaster.setFromCamera(this.mouse, this.camera);
+            const targets = [];
+            this.obstGroup.traverse(c => { if (c.isMesh) targets.push(c); });
+            this.geomGroup.traverse(c => { if (c.isMesh) targets.push(c); });
+            // Mesh wireframes are LineSegments — skip them; ground is handled by domain floor.
+            const hits = this.raycaster.intersectObjects(targets, false);
+            if (hits.length) {
+                this._walkPlaceAt(hits[0]);
+            } else {
+                // No OBST hit — drop the user onto the FDS-domain bottom (z=zmin)
+                // at the camera's current XZ ray hit with the plane.
+                const dir = new THREE.Vector3();
+                this.raycaster.ray.direction.clone().normalize();
+                const o = this.raycaster.ray.origin;
+                dir.copy(this.raycaster.ray.direction);
+                const floorY = this._walkDomainFloor();
+                if (dir.y < -1e-6) {
+                    const t = (floorY - o.y) / dir.y;
+                    if (t > 0) {
+                        const p = new THREE.Vector3(o.x + dir.x * t, floorY, o.z + dir.z * t);
+                        this._walkPlaceAt({ point: p });
+                        return;
+                    }
+                }
+                const status = document.getElementById((this.walkHudId || 'walk-hud') + '-status');
+                if (status) status.textContent = 'No surface there — try clicking on an obstruction or the floor.';
+            }
+            return;
+        }
+        // Standard pick (orbit mode)
         const rect = this.renderer.domElement.getBoundingClientRect();
         this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
         this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -337,7 +581,14 @@ class FDSViewer {
         this.zoneGroup.traverse(c => { if (c.isMesh) intersectObjects.push(c); });
         this.fireGroup.traverse(c => { if (c.isMesh) intersectObjects.push(c); });
 
-        const intersects = this.raycaster.intersectObjects(intersectObjects);
+        const allIntersects = this.raycaster.intersectObjects(intersectObjects);
+
+        // Discard hits that lie on the clipped-away side of any active plane
+        const intersects = this.renderer.clippingPlanes.length > 0
+            ? allIntersects.filter(hit =>
+                this.renderer.clippingPlanes.every(plane => plane.distanceToPoint(hit.point) >= -1e-6)
+              )
+            : allIntersects;
 
         // Restore previous selection
         if (this.selectedObject && this.selectedObject._originalMaterial) {
@@ -383,6 +634,17 @@ class FDSViewer {
     }
 
     clearScene() {
+        // Bail out of walk mode before tearing down — colliders go away and
+        // gravity would push the camera through empty space.
+        if (this.walkMode) this.exitWalkMode();
+        // Restore the highlighted object's original material before disposal
+        // walks. highlightMaterial is shared across selections, so disposing
+        // it here would corrupt every future click.
+        if (this.selectedObject && this.selectedObject._originalMaterial) {
+            this.selectedObject.material = this.selectedObject._originalMaterial;
+        }
+        this.selectedObject = null;
+
         this._clearGroup(this.meshGroup);
         this._clearGroup(this.obstGroup);
         this._clearGroup(this.ventGroup);
@@ -404,11 +666,15 @@ class FDSViewer {
     _clearGroup(group) {
         // Walk the whole subtree -- many renderers attach wireframes/sub-meshes
         // as children, and disposing only the top child leaks those.
+        const shared = this.highlightMaterial;
         const disposeNode = (node) => {
             if (node.geometry) node.geometry.dispose();
             if (node.material) {
-                if (Array.isArray(node.material)) node.material.forEach(m => m.dispose());
-                else node.material.dispose();
+                if (Array.isArray(node.material)) {
+                    node.material.forEach(m => { if (m !== shared) m.dispose(); });
+                } else if (node.material !== shared) {
+                    node.material.dispose();
+                }
             }
         };
         while (group.children.length > 0) {
@@ -472,6 +738,10 @@ class FDSViewer {
         const cy = (z1 + z2) / 2; // FDS Z -> Three.js Y
         const cz = (y1 + y2) / 2; // FDS Y -> Three.js Z
 
+        // size is clamped >0 so BoxGeometry doesn't degenerate; rawSize is the
+        // original FDS extents, used by callers that need to detect a true
+        // zero-thickness (planar) element. Don't read size.x < 0.001 for that
+        // check — it's clamped, use rawSize.x instead.
         return {
             position: new THREE.Vector3(cx, cy, cz),
             size: new THREE.Vector3(
@@ -479,6 +749,7 @@ class FDSViewer {
                 Math.max(height, 0.001),
                 Math.max(depth, 0.001)
             ),
+            rawSize: new THREE.Vector3(width, height, depth),
         };
     }
 
@@ -535,15 +806,17 @@ class FDSViewer {
             const obst = this.fdsData.obsts[i];
             if (!obst.xb) continue;
 
-            const { position, size } = this._xbToBox(obst.xb);
+            const { position, size, rawSize } = this._xbToBox(obst.xb);
             const rgb = resolveFDSColor(obst, this.fdsData.surfs, [180, 180, 180]);
             const color = new THREE.Color(rgb[0] / 255, rgb[1] / 255, rgb[2] / 255);
 
-            // Detect thin (planar) obstructions and give them visible thickness
+            // Detect thin (planar) obstructions from the raw (unclamped) extents
+            // and give them visible thickness. Using size.x would always be
+            // false because _xbToBox clamps to 0.001.
             const minThick = 0.02;
-            const thinX = size.x < 0.001;
-            const thinY = size.y < 0.001;
-            const thinZ = size.z < 0.001;
+            const thinX = rawSize.x < 1e-6;
+            const thinY = rawSize.y < 1e-6;
+            const thinZ = rawSize.z < 1e-6;
             const sx = thinX ? minThick : size.x;
             const sy = thinY ? minThick : size.y;
             const sz = thinZ ? minThick : size.z;
@@ -556,11 +829,18 @@ class FDSViewer {
                 color: color,
                 transparent: isTransparent,
                 opacity: opacity,
-                side: THREE.DoubleSide,
+                // FrontSide on opaque kills the worst Z-fight: two adjacent OBSTs
+                // each draw a back face into the shared interior — coincident
+                // depth = stipple/triangle artefacts. Transparent stays DoubleSide
+                // so you can still see the back wall through a window.
+                side: isTransparent ? THREE.DoubleSide : THREE.FrontSide,
                 depthWrite: !isTransparent,
+                // Negative offset on opaque OBST faces pulls them slightly toward
+                // the camera in the depth buffer, so coplanar MESH grid lines and
+                // adjacent thin OBST faces render *behind* and stop fighting.
                 polygonOffset: true,
-                polygonOffsetFactor: isTransparent ? -2 : 0,
-                polygonOffsetUnits: isTransparent ? -2 : 0,
+                polygonOffsetFactor: isTransparent ? -2 : -1,
+                polygonOffsetUnits: isTransparent ? -2 : -1,
             });
 
             const box = new THREE.Mesh(geometry, material);
@@ -587,10 +867,14 @@ class FDSViewer {
                 color: obst.color,
             };
 
-            // Wireframe overlay
+            // Wireframe overlay (toggle via the "OBST edges" checkbox in the
+            // sidebar — useful for authoring, hides the seams between OBSTs
+            // that make up a single visual wall).
             const edgeMat = new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 1 });
             const edgeGeo = new THREE.EdgesGeometry(geometry);
             const wireframe = new THREE.LineSegments(edgeGeo, edgeMat);
+            wireframe.visible = this.showObstEdges !== false;
+            wireframe._isObstEdge = true;
             box.add(wireframe);
 
             this.obstGroup.add(box);
@@ -624,15 +908,16 @@ class FDSViewer {
             }
             if (!xb) continue;
 
-            const { position, size } = this._xbToBox(xb);
+            const { position, size, rawSize } = this._xbToBox(xb);
             const rgb = resolveFDSColor(vent, this.fdsData.surfs, [255, 100, 50]);
             const color = new THREE.Color(rgb[0] / 255, rgb[1] / 255, rgb[2] / 255);
 
-            // Vents are often planar (one dimension is 0)
+            // Vents are often planar (one dimension is 0). Detect from raw
+            // extents — size.x has been clamped to 0.001 in _xbToBox.
             const minDim = 0.015; // render thin vents as visible thin slabs
-            const thinX = size.x < 0.001;
-            const thinY = size.y < 0.001;
-            const thinZ = size.z < 0.001;
+            const thinX = rawSize.x < 1e-6;
+            const thinY = rawSize.y < 1e-6;
+            const thinZ = rawSize.z < 1e-6;
             const sx = thinX ? minDim : size.x;
             const sy = thinY ? minDim : size.y;
             const sz = thinZ ? minDim : size.z;
@@ -922,8 +1207,8 @@ class FDSViewer {
                 const geometry = new THREE.SphereGeometry(r, 24, 16);
                 const material = new THREE.MeshPhongMaterial({
                     color: color,
-                    transparent: true,
-                    opacity: 0.6,
+                    transparent: false,
+                    opacity: 1.0,
                     side: THREE.DoubleSide,
                 });
                 const sphere = new THREE.Mesh(geometry, material);
@@ -960,8 +1245,8 @@ class FDSViewer {
                 const geometry = new THREE.CylinderGeometry(r, r, L, nTheta, nAxis, false);
                 const material = new THREE.MeshPhongMaterial({
                     color: color,
-                    transparent: true,
-                    opacity: 0.6,
+                    transparent: false,
+                    opacity: 1.0,
                     side: THREE.DoubleSide,
                 });
                 const cyl = new THREE.Mesh(geometry, material);
@@ -1033,10 +1318,12 @@ class FDSViewer {
                     geometry.setIndex(indices);
                     geometry.computeVertexNormals();
 
+                    // Terrain stays DoubleSide because it's an open surface
+                    // and may be viewed from below in some scenes.
                     const material = new THREE.MeshPhongMaterial({
                         color: color,
-                        transparent: true,
-                        opacity: 0.7,
+                        transparent: false,
+                        opacity: 1.0,
                         side: THREE.DoubleSide,
                     });
                     const mesh = new THREE.Mesh(geometry, material);
@@ -1062,8 +1349,8 @@ class FDSViewer {
                 const geometry = new THREE.BoxGeometry(size.x, size.y, size.z);
                 const material = new THREE.MeshPhongMaterial({
                     color: color,
-                    transparent: true,
-                    opacity: 0.6,
+                    transparent: false,
+                    opacity: 1.0,
                     side: THREE.DoubleSide,
                 });
                 const box = new THREE.Mesh(geometry, material);
@@ -1116,10 +1403,13 @@ class FDSViewer {
                     geometry.setIndex(indices);
                     geometry.computeVertexNormals();
 
+                    // Trimesh keeps DoubleSide — externally-authored meshes
+                    // sometimes have inconsistent winding, and FrontSide alone
+                    // would make patches of the object disappear.
                     const material = new THREE.MeshPhongMaterial({
                         color: color,
-                        transparent: true,
-                        opacity: 0.7,
+                        transparent: false,
+                        opacity: 1.0,
                         side: THREE.DoubleSide,
                     });
                     const mesh = new THREE.Mesh(geometry, material);
@@ -1129,11 +1419,11 @@ class FDSViewer {
                         id: geom.id,
                         surf_id: geom.surf_id,
                     };
-
-                    const wireMat = new THREE.LineBasicMaterial({ color: 0x64c8ff, transparent: true, opacity: 0.4 });
-                    const wireGeo = new THREE.WireframeGeometry(geometry);
-                    const wireframe = new THREE.LineSegments(wireGeo, wireMat);
-                    mesh.add(wireframe);
+                    // No wireframe overlay on dense external meshes — drawing
+                    // every triangle edge buries the actual shape under noise.
+                    // EdgesGeometry with a crease threshold could be used to
+                    // show only sharp seams, but for car / mannequin / CAD
+                    // imports a clean solid render reads better.
 
                     this.geomGroup.add(mesh);
                 }
@@ -1206,8 +1496,8 @@ class FDSViewer {
 
                         const material = new THREE.MeshPhongMaterial({
                             color: color,
-                            transparent: true,
-                            opacity: 0.6,
+                            transparent: false,
+                            opacity: 1.0,
                             side: THREE.DoubleSide,
                         });
                         const mesh = new THREE.Mesh(geometry, material);
@@ -1218,11 +1508,13 @@ class FDSViewer {
                             surf_id: geom.surf_id,
                             extrude: geom.extrude,
                         };
-
-                        const wireMat = new THREE.LineBasicMaterial({ color: 0x64c8ff, transparent: true, opacity: 0.4 });
-                        const wireGeo = new THREE.WireframeGeometry(geometry);
-                        const wireframe = new THREE.LineSegments(wireGeo, wireMat);
-                        mesh.add(wireframe);
+                        // Show only crease edges (faces with > ~30° dihedral)
+                        // — outlines the polygon shape cleanly without
+                        // overlaying every triangulated face.
+                        const edgeMat = new THREE.LineBasicMaterial({ color: 0x64c8ff, transparent: true, opacity: 0.55 });
+                        const edgeGeo = new THREE.EdgesGeometry(geometry, 30);
+                        const edges = new THREE.LineSegments(edgeGeo, edgeMat);
+                        mesh.add(edges);
 
                         this.geomGroup.add(mesh);
                     }
@@ -1593,11 +1885,21 @@ class FDSViewer {
         if (this.fdsData.meshes.length === 0) return;
 
         const gridColor = 0x444466;
+        // polygonOffset is documented for triangles only and most drivers
+        // ignore it for lines, so we offset the grid GEOMETRICALLY instead:
+        // each line is shifted ~0.03 m outward along the mesh face's outward
+        // normal. That's larger than the thin-OBST 0.02 m inflation, so the
+        // grid sits just outside any flush wall — visible from outside the
+        // box, properly hidden behind the wall from inside the room.
+        const EPS = 0.03;
         const material = new THREE.LineBasicMaterial({ color: gridColor });
 
         for (const mesh of this.fdsData.meshes) {
             const xb = mesh.xb;
             if (!xb) continue;
+            // Skip grid rendering when IJK was synthesised — drawing a default
+            // 10×10×10 lattice would be a visual lie about the cell count.
+            if (mesh.ijk_explicit === false) continue;
 
             const x1 = xb[0], x2 = xb[1];
             const y1 = xb[2], y2 = xb[3];
@@ -1617,51 +1919,53 @@ class FDSViewer {
             const points = [];
 
             // ── XY plane (floor at z1 and ceiling at z2) ──
-            // FDS X→Three X, FDS Y→Three Z, FDS Z→Three Y
+            // FDS X→Three X, FDS Y→Three Z, FDS Z→Three Y.
+            // zOff pushes the grid outward (down for floor, up for ceiling)
+            // so coplanar OBST walls don't bury it.
             for (const zVal of [z1, z2]) {
-                // Lines along X direction
+                const zOff = zVal === z1 ? -EPS : EPS;
+                const zG = zVal + zOff;
                 for (let j = 0; j <= nj; j += skipJ) {
                     const yy = y1 + j * stepY;
-                    points.push(new THREE.Vector3(x1, zVal, yy));
-                    points.push(new THREE.Vector3(x2, zVal, yy));
+                    points.push(new THREE.Vector3(x1, zG, yy));
+                    points.push(new THREE.Vector3(x2, zG, yy));
                 }
-                // Lines along Y direction
                 for (let i = 0; i <= ni; i += skipI) {
                     const xx = x1 + i * stepX;
-                    points.push(new THREE.Vector3(xx, zVal, y1));
-                    points.push(new THREE.Vector3(xx, zVal, y2));
+                    points.push(new THREE.Vector3(xx, zG, y1));
+                    points.push(new THREE.Vector3(xx, zG, y2));
                 }
             }
 
             // ── XZ plane (front at y1 and back at y2) ──
             for (const yVal of [y1, y2]) {
-                // Lines along X direction
+                const yOff = yVal === y1 ? -EPS : EPS;
+                const yG = yVal + yOff;
                 for (let k = 0; k <= nk; k += skipK) {
                     const zz = z1 + k * stepZ;
-                    points.push(new THREE.Vector3(x1, zz, yVal));
-                    points.push(new THREE.Vector3(x2, zz, yVal));
+                    points.push(new THREE.Vector3(x1, zz, yG));
+                    points.push(new THREE.Vector3(x2, zz, yG));
                 }
-                // Lines along Z direction
                 for (let i = 0; i <= ni; i += skipI) {
                     const xx = x1 + i * stepX;
-                    points.push(new THREE.Vector3(xx, z1, yVal));
-                    points.push(new THREE.Vector3(xx, z2, yVal));
+                    points.push(new THREE.Vector3(xx, z1, yG));
+                    points.push(new THREE.Vector3(xx, z2, yG));
                 }
             }
 
             // ── YZ plane (left at x1 and right at x2) ──
             for (const xVal of [x1, x2]) {
-                // Lines along Y direction
+                const xOff = xVal === x1 ? -EPS : EPS;
+                const xG = xVal + xOff;
                 for (let k = 0; k <= nk; k += skipK) {
                     const zz = z1 + k * stepZ;
-                    points.push(new THREE.Vector3(xVal, zz, y1));
-                    points.push(new THREE.Vector3(xVal, zz, y2));
+                    points.push(new THREE.Vector3(xG, zz, y1));
+                    points.push(new THREE.Vector3(xG, zz, y2));
                 }
-                // Lines along Z direction
                 for (let j = 0; j <= nj; j += skipJ) {
                     const yy = y1 + j * stepY;
-                    points.push(new THREE.Vector3(xVal, z1, yy));
-                    points.push(new THREE.Vector3(xVal, z2, yy));
+                    points.push(new THREE.Vector3(xG, z1, yy));
+                    points.push(new THREE.Vector3(xG, z2, yy));
                 }
             }
 
@@ -1695,9 +1999,17 @@ class FDSViewer {
     }
 
     _updateAxes() {
-        if (!this.boundingBox) return;
-        const size = Math.max(this.boundingBox.size.x, this.boundingBox.size.y, this.boundingBox.size.z);
-        this.axesHelper.scale.setScalar(size * 0.3);
+        if (!this.boundingBox) {
+            // No model: keep the axes visible at a small default size so the
+            // user gets a sense of orientation in the empty scene.
+            this.axesHelper.visible = true;
+            this.axesHelper.scale.setScalar(1);
+            return;
+        }
+        // Model is loaded — hide the origin axes so they don't distract from
+        // the geometry. Camera-view buttons and walk-mode already convey
+        // orientation; the axes are only useful when the scene is empty.
+        this.axesHelper.visible = false;
     }
 
     /**
@@ -1716,8 +2028,24 @@ class FDSViewer {
             case 'geoms': this.geomGroup.visible = visible; break;
             case 'hvacs': this.hvacGroup.visible = visible; break;
             case 'zones': this.zoneGroup.visible = visible; break;
-            case 'slcfs': this.slcfGroup.visible = visible; break;
             case 'fires': this.fireGroup.visible = visible; break;
+            // Unified "Slices" toggle. In FDS terminology an &SLCF declaration
+            // and the .sf data file it produces are the SAME slice — the
+            // declaration is the recipe, the data is the cooked output. So
+            // this single switch governs both:
+            //   - slcfGroup: the transparent &SLCF rectangles parsed from .fds
+            //   - _isSliceOverlay nodes: the coloured .sf data overlays
+            // The scene.userData flag is read by slice-renderer.js so a fresh
+            // .sf load while the toggle is off doesn't pop a stale overlay in.
+            // 'slcfs' kept as a legacy alias for any code that still calls it.
+            case 'slices':
+            case 'slcfs':
+                this.scene.userData.slicesVisible = visible;
+                this.slcfGroup.visible = visible;
+                this.scene.traverse(n => {
+                    if (n._isSliceOverlay) n.visible = visible;
+                });
+                break;
         }
     }
 
@@ -1734,13 +2062,79 @@ class FDSViewer {
     }
 
     /**
+     * Show/hide the black edge wireframe on every OBST. Default is hidden so
+     * the seams between adjacent OBSTs that compose a wall don't read as
+     * visible lines in walk mode.
+     */
+    setShowObstEdges(show) {
+        this.showObstEdges = !!show;
+        this.obstGroup.traverse(child => {
+            if (child._isObstEdge) child.visible = !!show;
+        });
+    }
+
+    /**
+     * Set opacity across every geometry group (meshes, obsts, vents, holes,
+     * devices, inits, geoms, hvac, zones, fires, grid). Slice and smoke
+     * overlays are flagged with `_isSliceOverlay` and are skipped.
+     */
+    setSceneOpacity(opacity) {
+        const groups = [
+            this.meshGroup, this.obstGroup, this.ventGroup, this.holeGroup,
+            this.devcGroup, this.initGroup, this.geomGroup, this.hvacGroup,
+            this.zoneGroup, this.fireGroup, this.gridGroup, this.slcfGroup,
+        ];
+        const transparent = opacity < 1;
+        for (const group of groups) {
+            if (!group) continue;
+            group.traverse(node => {
+                if (node._isSliceOverlay) return;
+                if (!node.material) return;
+                const mats = Array.isArray(node.material) ? node.material : [node.material];
+                for (const m of mats) {
+                    if (!m) continue;
+                    m.opacity = opacity;
+                    m.transparent = transparent;
+                }
+            });
+        }
+    }
+
+    /**
      * Set background color
      */
     setBackground(color) {
         this.scene.background = new THREE.Color(color);
     }
 
-    /**
+    setGrayscale(enabled) {
+        this._grayscale = enabled;
+        this.scene.traverse(node => {
+            if (node._isSliceOverlay) return; // never desaturate slice colors
+            if (!node.isMesh && !node.isLine && !node.isLineSegments) return;
+            const mats = Array.isArray(node.material) ? node.material : [node.material];
+            for (const m of mats) {
+                if (!m || !m.color) continue;
+                if (enabled) {
+                    if (!m._origColor) m._origColor = m.color.getHex();
+                    const c = new THREE.Color(m._origColor);
+                    const lum = 0.299 * c.r + 0.587 * c.g + 0.114 * c.b;
+                    m.color.setRGB(lum, lum, lum);
+                    if (m.emissive && m.emissive.getHex() > 0) {
+                        if (!m._origEmissive) m._origEmissive = m.emissive.getHex();
+                        const e = new THREE.Color(m._origEmissive);
+                        const elum = 0.299 * e.r + 0.587 * e.g + 0.114 * e.b;
+                        m.emissive.setRGB(elum, elum, elum);
+                    }
+                } else if (m._origColor !== undefined) {
+                    m.color.setHex(m._origColor);
+                    if (m._origEmissive !== undefined && m.emissive) m.emissive.setHex(m._origEmissive);
+                }
+            }
+        });
+    }
+
+/**
      * Reset camera to fit all geometry
      */
     resetCamera() {
@@ -1791,6 +2185,102 @@ class FDSViewer {
     }
 
     /**
+     * Apply 6-plane clipping in FDS coordinates.
+     * FDS Y maps to Three.js Z; FDS Z maps to Three.js Y.
+     *
+     * PER-AXIS ACTIVATION: only enable a clip plane when the user has
+     * actually pushed that slider off the model bound. The previous design
+     * enabled all 6 planes whenever any one slider moved, which silently
+     * clipped every edge element on the untouched axes:
+     *   - thin OBSTs (walls/floors) at FDS X=0,0 render as 0.02 m slabs
+     *     centered on the plane → cut in half by a clip at xmin=0
+     *   - mesh grid lines are offset 0.03 m OUTWARD beyond each face → sit
+     *     entirely outside a clip at the model bound and vanish
+     *   - face-mounted VENTs follow the same slab-around-the-plane pattern
+     * Symptom users saw: "X clipping also clips Y edge elements." Fix:
+     * a plane at the model bound contributes nothing, so leaving any axis
+     * untouched preserves its boundary geometry — and pushing a slider
+     * inward still clips that axis exactly at the user's value.
+     */
+    setClipPlanes(xmin, xmax, ymin, ymax, zmin, zmax) {
+        const bounds = this.getBoundsFDS();
+        if (!bounds) {
+            // Bounds unknown (no geometry yet) — apply all planes literally.
+            this.clipPlanes[0].constant = -xmin;
+            this.clipPlanes[1].constant = xmax;
+            this.clipPlanes[2].constant = -ymin;
+            this.clipPlanes[3].constant = ymax;
+            this.clipPlanes[4].constant = -zmin;
+            this.clipPlanes[5].constant = zmax;
+            this.renderer.clippingPlanes = [...this.clipPlanes];
+            return;
+        }
+        // TOL absorbs float-precision drift from slider→input round-tripping
+        // (display shows .toFixed(2), value may differ from bound by ≤0.005).
+        const TOL = 0.001;
+        const active = [];
+        if (xmin > bounds.xmin + TOL) {
+            this.clipPlanes[0].constant = -xmin;
+            active.push(this.clipPlanes[0]);
+        }
+        if (xmax < bounds.xmax - TOL) {
+            this.clipPlanes[1].constant = xmax;
+            active.push(this.clipPlanes[1]);
+        }
+        if (ymin > bounds.ymin + TOL) {
+            this.clipPlanes[2].constant = -ymin;
+            active.push(this.clipPlanes[2]);
+        }
+        if (ymax < bounds.ymax - TOL) {
+            this.clipPlanes[3].constant = ymax;
+            active.push(this.clipPlanes[3]);
+        }
+        if (zmin > bounds.zmin + TOL) {
+            this.clipPlanes[4].constant = -zmin;
+            active.push(this.clipPlanes[4]);
+        }
+        if (zmax < bounds.zmax - TOL) {
+            this.clipPlanes[5].constant = zmax;
+            active.push(this.clipPlanes[5]);
+        }
+        this.renderer.clippingPlanes = active;
+    }
+
+    resetClipPlanes() {
+        this.renderer.clippingPlanes = [];
+    }
+
+    /**
+     * Return the model bounding box in FDS coordinates.
+     */
+    getBoundsFDS() {
+        if (!this.boundingBox) return null;
+        return {
+            xmin: this.boundingBox.min.x,
+            xmax: this.boundingBox.max.x,
+            ymin: this.boundingBox.min.z,
+            ymax: this.boundingBox.max.z,
+            zmin: this.boundingBox.min.y,
+            zmax: this.boundingBox.max.y,
+        };
+    }
+
+    /**
+     * Set bounding box from FDS coordinates and fit camera.
+     * Used when smoke-only data is loaded with no .fds geometry.
+     */
+    setBoundsFDSAndFit(xmin, xmax, ymin, ymax, zmin, zmax) {
+        this.boundingBox = {
+            min: new THREE.Vector3(xmin, zmin, ymin),
+            max: new THREE.Vector3(xmax, zmax, ymax),
+            center: new THREE.Vector3((xmin+xmax)/2, (zmin+zmax)/2, (ymin+ymax)/2),
+            size: new THREE.Vector3(xmax-xmin, zmax-zmin, ymax-ymin),
+        };
+        this._fitCamera();
+        this._updateAxes();
+    }
+
+    /**
      * Get scene statistics
      */
     getStats() {
@@ -1807,5 +2297,242 @@ class FDSViewer {
             slcfs: this.fdsData && this.fdsData.slcfs ? this.fdsData.slcfs.length : 0,
             fires: this.fireGroup ? this.fireGroup.children.length : 0,
         };
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // ── Walk mode (FPS) ───────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════════
+
+    /** Returns the list of meshes used for collision/floor raycasts. */
+    _walkCollisionTargets() {
+        const targets = [];
+        const collect = group => {
+            if (!group) return;
+            group.traverse(c => { if (c.isMesh && c.visible) targets.push(c); });
+        };
+        // Solid obstructions + custom geom — these are what a walker bumps into.
+        collect(this.obstGroup);
+        collect(this.geomGroup);
+        return targets;
+    }
+
+    /** Returns FDS-domain Z bottom (Three.Y) used as the implicit floor when
+     *  no OBST is found below the player. Falls back to 0 if no MESH defined. */
+    _walkDomainFloor() {
+        if (!this.fdsData || !this.fdsData.meshes.length) return 0;
+        let minZ = Infinity;
+        for (const m of this.fdsData.meshes) {
+            if (!m.xb) continue;
+            if (m.xb[4] < minZ) minZ = m.xb[4]; // FDS zmin
+        }
+        return Number.isFinite(minZ) ? minZ : 0;
+    }
+
+    /** Cast a ray straight down from a point. Returns hit Three.Y or null. */
+    _walkRaycastDown(threePos, fromY) {
+        const origin = new THREE.Vector3(threePos.x, fromY, threePos.z);
+        const dir = new THREE.Vector3(0, -1, 0);
+        this.walkRaycaster.set(origin, dir);
+        this.walkRaycaster.far = 200;
+        const targets = this._walkCollisionTargets();
+        const hits = this.walkRaycaster.intersectObjects(targets, false);
+        if (hits.length) return hits[0].point.y;
+        return null;
+    }
+
+    /** Try to move from `from` to `to` (Three coords, horizontal only). Returns
+     *  the resolved position after sliding against walls. Uses a forward ray of
+     *  length = step + walkRadius and stops just short of any hit. */
+    _walkResolveHorizontal(from, toX, toZ) {
+        const dx = toX - from.x;
+        const dz = toZ - from.z;
+        const stepLen = Math.hypot(dx, dz);
+        if (stepLen < 1e-6) return { x: from.x, z: from.z };
+        const dir = new THREE.Vector3(dx / stepLen, 0, dz / stepLen);
+        const eyeY = from.y;
+        // Cast at the eye height AND at half-height to catch low and tall walls
+        const targets = this._walkCollisionTargets();
+        const probeYs = [eyeY, eyeY - this.walkEyeHeight * 0.5, eyeY - this.walkEyeHeight + 0.1];
+        let minHit = Infinity;
+        for (const py of probeYs) {
+            this.walkRaycaster.set(new THREE.Vector3(from.x, py, from.z), dir);
+            this.walkRaycaster.far = stepLen + this.walkRadius;
+            const hits = this.walkRaycaster.intersectObjects(targets, false);
+            if (hits.length && hits[0].distance < minHit) minHit = hits[0].distance;
+        }
+        let allowed = stepLen;
+        if (minHit < Infinity) allowed = Math.max(0, minHit - this.walkRadius);
+        return { x: from.x + dir.x * allowed, z: from.z + dir.z * allowed };
+    }
+
+    /** Per-frame update while in walk mode. Applies look, movement, gravity,
+     *  floor stick and wall collision. */
+    _walkUpdate(dt) {
+        if (!this.walkPlaced) return; // waiting for the user's first click
+
+        // ── Build forward/right vectors from camera yaw (no pitch) ────────
+        const fwd = new THREE.Vector3();
+        this.camera.getWorldDirection(fwd);
+        fwd.y = 0;
+        if (fwd.lengthSq() < 1e-9) fwd.set(0, 0, -1);
+        fwd.normalize();
+        const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0)).normalize();
+
+        // ── Horizontal velocity from WASD ─────────────────────────────────
+        const move = new THREE.Vector3();
+        const k = this.walkKeys;
+        if (k['w'] || k['arrowup'])    move.add(fwd);
+        if (k['s'] || k['arrowdown'])  move.sub(fwd);
+        if (k['d'] || k['arrowright']) move.add(right);
+        if (k['a'] || k['arrowleft'])  move.sub(right);
+        if (move.lengthSq() > 0) {
+            move.normalize();
+            const speed = this.walkSpeed * (k['shift'] ? this.walkRunMult : 1);
+            move.multiplyScalar(speed * dt);
+        }
+
+        const cam = this.camera.position;
+        const next = this._walkResolveHorizontal(cam, cam.x + move.x, cam.z + move.z);
+
+        // ── Vertical: gravity + floor stick ───────────────────────────────
+        const eyeH = this.walkEyeHeight;
+        const domainFloor = this._walkDomainFloor();
+        // Raycast from slightly above the eye to robustly find what we're on.
+        const floorY = this._walkRaycastDown({ x: next.x, z: next.z }, cam.y + 0.05);
+        // Effective floor under the new XZ position
+        const surfaceY = (floorY != null && floorY <= cam.y + 0.6) ? floorY : domainFloor;
+        const targetEyeY = surfaceY + eyeH;
+
+        // Apply gravity OR stick to the floor
+        this.walkVelocityY -= this.walkGravity * dt;
+        let newY = cam.y + this.walkVelocityY * dt;
+        if (newY <= targetEyeY) {
+            newY = targetEyeY;
+            this.walkVelocityY = 0;
+            this._walkGrounded = true;
+        } else {
+            this._walkGrounded = false;
+        }
+        // Jump (only when grounded)
+        if (k[' '] && this._walkGrounded) {
+            this.walkVelocityY = this.walkJumpVel;
+            this._walkGrounded = false;
+        }
+
+        this.camera.position.set(next.x, newY, next.z);
+    }
+
+    /** Enter walk mode. Disables OrbitControls and primes the HUD until the
+     *  user clicks a surface to be placed.
+     *  @param {string} [hudId] DOM id of the HUD overlay to drive. Defaults
+     *  to 'walk-hud' (3D Geometry page). The Output page passes its own id. */
+    enterWalkMode(hudId) {
+        if (this.walkMode) return;
+        this.walkHudId = hudId || 'walk-hud';
+        this.walkMode = true;
+        this.walkPlaced = false;
+        this.walkVelocityY = 0;
+        this.walkSavedCamera = {
+            position: this.camera.position.clone(),
+            quaternion: this.camera.quaternion.clone(),
+            target: this.controls.target.clone(),
+        };
+        this.controls.enabled = false;
+
+        if (!this.walkControls) {
+            this.walkControls = new THREE.PointerLockControls(this.camera, this.renderer.domElement);
+            this.walkControls.addEventListener('lock',   () => this._walkSetHudLocked(true));
+            this.walkControls.addEventListener('unlock', () => {
+                this._walkSetHudLocked(false);
+                // Standard FPS UX: Esc unlocks. We also exit the mode entirely.
+                if (this.walkMode) this.exitWalkMode();
+            });
+        }
+
+        // Key listeners — capture key state in walkKeys map.
+        this._walkOnKeyDown = (e) => {
+            if (!this.walkMode) return;
+            const key = e.key === ' ' ? ' ' : e.key.toLowerCase();
+            this.walkKeys[key] = true;
+            if (key === 'shift') this.walkKeys.shift = true;
+            // Swallow nav keys so the page doesn't scroll while walking
+            if (['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright',' '].includes(key)) {
+                e.preventDefault();
+            }
+        };
+        this._walkOnKeyUp = (e) => {
+            const key = e.key === ' ' ? ' ' : e.key.toLowerCase();
+            this.walkKeys[key] = false;
+            if (key === 'shift') this.walkKeys.shift = false;
+        };
+        window.addEventListener('keydown', this._walkOnKeyDown);
+        window.addEventListener('keyup', this._walkOnKeyUp);
+
+        // Show HUD
+        const hud = document.getElementById(this.walkHudId);
+        if (hud) {
+            hud.style.display = 'flex';
+            hud.classList.remove('locked');
+            const status = document.getElementById(this.walkHudId + '-status');
+            if (status) status.textContent = 'Click any horizontal surface to place yourself.';
+        }
+    }
+
+    /** Exit walk mode. Restores OrbitControls and the camera state. */
+    exitWalkMode() {
+        if (!this.walkMode) return;
+        this.walkMode = false;
+        this.walkPlaced = false;
+        this.walkKeys = {};
+        this.walkVelocityY = 0;
+
+        if (this.walkControls && this.walkControls.isLocked) {
+            try { this.walkControls.unlock(); } catch (_) { /* noop */ }
+        }
+        if (this._walkOnKeyDown) window.removeEventListener('keydown', this._walkOnKeyDown);
+        if (this._walkOnKeyUp)   window.removeEventListener('keyup', this._walkOnKeyUp);
+        this._walkOnKeyDown = this._walkOnKeyUp = null;
+
+        // Restore camera to where the user was before walk mode
+        if (this.walkSavedCamera) {
+            this.camera.position.copy(this.walkSavedCamera.position);
+            this.camera.quaternion.copy(this.walkSavedCamera.quaternion);
+            this.controls.target.copy(this.walkSavedCamera.target);
+        }
+        this.controls.enabled = true;
+
+        const hud = document.getElementById(this.walkHudId || 'walk-hud');
+        if (hud) { hud.style.display = 'none'; hud.classList.remove('locked'); }
+
+        // Let the app re-sync the toggle button label.
+        this.container.dispatchEvent(new CustomEvent('walkModeChanged', { detail: { active: false } }));
+    }
+
+    /** Place the walker at a clicked 3D point. Snaps to a horizontal surface
+     *  whose normal points up, then locks the pointer for mouse-look. */
+    _walkPlaceAt(hit) {
+        // Eye position = hit point + eyeHeight on the up axis
+        const eye = new THREE.Vector3(hit.point.x, hit.point.y + this.walkEyeHeight, hit.point.z);
+        this.camera.position.copy(eye);
+        // Look horizontally (preserve yaw, zero pitch)
+        const dir = new THREE.Vector3();
+        this.camera.getWorldDirection(dir);
+        dir.y = 0;
+        if (dir.lengthSq() < 1e-9) dir.set(0, 0, -1);
+        dir.normalize();
+        this.camera.lookAt(eye.x + dir.x, eye.y, eye.z + dir.z);
+        this.walkPlaced = true;
+        this.walkVelocityY = 0;
+
+        if (this.walkControls && !this.walkControls.isLocked) {
+            try { this.walkControls.lock(); } catch (_) { /* user gesture required — already in a click */ }
+        }
+    }
+
+    _walkSetHudLocked(locked) {
+        const hud = document.getElementById(this.walkHudId || 'walk-hud');
+        if (!hud) return;
+        if (locked) hud.classList.add('locked');
+        else hud.classList.remove('locked');
     }
 }

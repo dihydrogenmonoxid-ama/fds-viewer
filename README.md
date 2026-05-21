@@ -5,13 +5,14 @@
 [![GitHub Downloads](https://img.shields.io/github/downloads/ProfRino/fds-viewer/total?logo=github&label=downloads&color=blue)](https://github.com/ProfRino/fds-viewer/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A browser-based 3D previewer for **Fire Dynamics Simulator (FDS)** input files.
-Drop in any `.fds` file and inspect meshes, obstructions, vents, holes,
-devices, slice planes, fire sources and HVAC networks **before** launching a
-multi-hour FDS simulation - catching geometry errors in seconds instead of
-after a failed run.
+A browser-based 3D **viewer** for **Fire Dynamics Simulator (FDS)** input
+files and simulation outputs. Drop in any `.fds` file to inspect meshes,
+obstructions, vents, holes, devices, slice planes, fire sources and HVAC
+networks **before** launching a multi-hour FDS run -- then open the
+simulation folder afterwards to play back smoke (`.s3d`), slice (`.sf`)
+and boundary (`.bf`) results without leaving the browser.
 
-![FDS Viewer demo](assets/demo.gif)
+![FDS Viewer demo](assets/demo2_full_2x.gif)
 
 > **Project Lead:** Prof Rino Lovreglio, PhD - Massey University
 >
@@ -26,9 +27,13 @@ after a failed run.
 Pure client-side - no installation, no build step, no backend. Parses FDS namelist input
 (`&MESH`, `&OBST`, `&VENT`, `&HOLE`, `&DEVC`, `&INIT`, `&GEOM`, `&HVAC`, `&ZONE`, `&SLCF`, `&SURF`, `&REAC`, `&MATL`, ...).
 
-Four pages: **3D Geometry** (interactive Three.js scene with layer toggles, opacity, canonical camera views and click-to-inspect), **Mesh** (resolution, cell count, parallel-MPI breakdown), **Fire & Combustion** (burner HRR, reaction chemistry, materials), and **FDS Code** (full source with syntax highlighting).
+**Six pages.** Pre-run: **3D Geometry** (interactive Three.js scene with layer toggles, opacity, canonical views and click-to-inspect), **Mesh** (resolution, cell count, parallel-MPI breakdown), **Fire & Combustion** (burner HRR, reaction chemistry, materials), and **Code** (full `.fds` source with syntax highlighting and an in-browser linter catching 50+ rule violations). Post-run: **Output** (point at the simulation folder once, the viewer detects soot, slice and boundary data and lets you play back all three on the same 3D scene). And a multi-page **Help / User Guide** with parameter equations and worked examples.
 
-Light & dark theme. Drag-and-drop or "Open File" - multiple files can be loaded in the same session. Keyboard shortcuts: `W A S D` move, `Q E` up/down, arrows rotate, `1`-`6` canonical views, `0` iso, `R` reset.
+**Output visualization.** WebGL2 volume-rendered smoke (`.s3d`) with Basic and Solid-aware (depth-sampled) modes and user-tunable transfer functions for soot and HRRPUV. Multi-mesh slice (`.sf`) stitching with shared colormap. Boundary patches (`.bf`) with per-frame auto-range colorbar.
+
+**Navigation.** Standard orbit controls plus first-person **Walk mode** (W A S D, mouse-look, Shift run, Space jump, Esc exit) and an **orthographic / perspective** toggle in each 3D view. Per-axis clipping that doesn't cull edge geometry.
+
+**Quality of life.** Light & dark theme. Drag-and-drop or "Open File" - multiple files in the same session. Keyboard shortcuts: `W A S D` move, `Q E` up/down, arrows rotate, `1`-`6` canonical views, `0` iso, `R` reset.
 
 ## Download
 
@@ -84,14 +89,20 @@ inputs for the viewer - they are **not** intended as validated design fires.
 .
 ├── index.html          Application shell
 ├── css/style.css       Styles (light & dark themes)
-├── js/
-│   ├── app.js          Wiring, event handling, theme, URL params
-│   ├── fds-parser.js   Namelist parser
-│   ├── viewer.js       Three.js scene
-│   ├── mesh-panel.js   Mesh / parallel panel
-│   ├── fire-panel.js   Fire & combustion panel
-│   └── sample-data.js  Embedded sample (for offline Load Sample)
+├── js/                 Parser, linter, 3D viewer, Output overlays
+│   ├── app.js              Wiring, event handling, theme, URL params
+│   ├── fds-parser.js       Namelist parser
+│   ├── fds-linter.js       50+ rule static validator
+│   ├── viewer.js           Three.js scene, walk mode, clipping
+│   ├── mesh-panel.js       Mesh / parallel panel
+│   ├── fire-panel.js       Fire & combustion panel
+│   ├── output-page.js      Output page wiring (smoke / slice / BNDF)
+│   ├── smoke3d-*.js        .s3d reader + WebGL2 volume overlay
+│   ├── slice-*.js          .sf reader + multi-mesh slice overlay
+│   ├── boundary-*.js       .bf reader + boundary patch overlay
+│   └── sample-data.js      Embedded sample (for offline Load Sample)
 ├── examples/*.fds      Sample inputs (also editable on disk)
+├── assets/             Demo GIFs used by this README
 ├── serve.bat           Optional local server (only for ?file= URL params)
 └── README.md
 ```
