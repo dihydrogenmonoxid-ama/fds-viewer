@@ -297,21 +297,23 @@ document.addEventListener('DOMContentLoaded', () => {
             t.classList.toggle('active', t.dataset.page === page);
         });
 
-        const appLayout   = document.getElementById('app-layout');
-        const meshPanel   = document.getElementById('mesh-panel');
-        const firePanel   = document.getElementById('fire-panel');
-        const codePanel   = document.getElementById('fds-code-panel');
-        const outputPanel = document.getElementById('output-panel');
-        const helpPanel   = document.getElementById('help-panel');
-        const footerBar   = document.querySelector('.footer-bar');
+        const appLayout    = document.getElementById('app-layout');
+        const meshPanel    = document.getElementById('mesh-panel');
+        const firePanel    = document.getElementById('fire-panel');
+        const codePanel    = document.getElementById('fds-code-panel');
+        const chartsPanel  = document.getElementById('charts-panel');
+        const outputPanel  = document.getElementById('output-panel');
+        const helpPanel    = document.getElementById('help-panel');
+        const footerBar    = document.querySelector('.footer-bar');
 
         // Reset all
         appLayout.style.display = '';
         meshPanel.classList.remove('active');
         firePanel.classList.remove('active');
         codePanel.classList.remove('active');
-        if (outputPanel) outputPanel.classList.remove('active');
-        if (helpPanel)   helpPanel.classList.remove('active');
+        if (chartsPanel)  chartsPanel.classList.remove('active');
+        if (outputPanel)  outputPanel.classList.remove('active');
+        if (helpPanel)    helpPanel.classList.remove('active');
         footerBar.style.display = '';
 
         if (page === 'mesh') {
@@ -326,6 +328,11 @@ document.addEventListener('DOMContentLoaded', () => {
             appLayout.style.display = 'none';
             codePanel.classList.add('active');
             footerBar.style.display = 'none';
+        } else if (page === 'charts') {
+            appLayout.style.display = 'none';
+            if (chartsPanel) chartsPanel.classList.add('active');
+            footerBar.style.display = 'none';
+            if (typeof window.buildChartsPanel === 'function') window.buildChartsPanel();
         } else if (page === 'output') {
             appLayout.style.display = 'none';
             if (outputPanel) outputPanel.classList.add('active');
