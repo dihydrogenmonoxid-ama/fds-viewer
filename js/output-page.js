@@ -25,6 +25,7 @@
     let boundaryOverlay = null;
     let boundaryPlaybackTimer = null;
     let agentOverlay = null;
+    let agentFile = null;
     let mode = 'smoke'; // 'slice' | 'smoke' | 'boundary'
     // Module-level handle to wireModeToggle's inner applyMode so other
     // module functions (handleSimulationFolder) can re-run it without
@@ -1532,26 +1533,47 @@
     // ── Agent trajectory overlay ──────────────────────────────────────────
     function wireAgents(viewer) {
         const agentsFile = document.getElementById('output-agents-file');
+        const agentsReload = document.getElementById('output-agents-reload');
+
+        async function loadAgentTrajectory(file) {
+            const status = document.getElementById('output-agents-status');
+            if (status) status.textContent = 'Loading ' + file.name + '…';
+            const buf = await file.arrayBuffer();
+            const ds = await loadTrajectorySqlite(buf);
+            if (!agentOverlay) agentOverlay = new AgentOverlay(viewer.scene);
+            agentOverlay.load(ds);
+            populateAgentColorby(ds);
+            wireAgentControls(ds);
+            const t = activeDisplayTime();
+            if (t !== null) agentOverlay.setTime(t); else agentOverlay.setFrame(0);
+            drawAgentColorbar();
+            let maxAgents = 0;
+            for (const f of ds.frames) if (f.count > maxAgents) maxAgents = f.count;
+            if (status) status.textContent = file.name + ' — ' + ds.frames.length + ' frames, ' + maxAgents + ' agents max';
+        }
+
         if (agentsFile) agentsFile.addEventListener('change', async (e) => {
             const file = e.target.files && e.target.files[0];
             if (!file) return;
-            const status = document.getElementById('output-agents-status');
+            agentFile = file;
             try {
-                if (status) status.textContent = 'Loading ' + file.name + '…';
-                const buf = await file.arrayBuffer();
-                const ds = await loadTrajectorySqlite(buf);
-                if (!agentOverlay) agentOverlay = new AgentOverlay(viewer.scene);
-                agentOverlay.load(ds);
-                populateAgentColorby(ds);
-                wireAgentControls(ds);
-                const t = activeDisplayTime();
-                if (t !== null) agentOverlay.setTime(t); else agentOverlay.setFrame(0);
-                drawAgentColorbar();
-                let maxAgents = 0;
-                for (const f of ds.frames) if (f.count > maxAgents) maxAgents = f.count;
-                if (status) status.textContent = file.name + ' — ' + ds.frames.length + ' frames, ' + maxAgents + ' agents max';
+                await loadAgentTrajectory(file);
+                if (agentsReload) agentsReload.disabled = false;
             } catch (err) {
+                const status = document.getElementById('output-agents-status');
                 if (status) status.textContent = 'Error: ' + err.message;
+                if (typeof console !== 'undefined') console.error(err);
+            }
+        });
+
+        if (agentsReload) agentsReload.addEventListener('click', async () => {
+            if (!agentFile) return;
+            try {
+                await loadAgentTrajectory(agentFile);
+            } catch (err) {
+                const status = document.getElementById('output-agents-status');
+                if (status) status.textContent = agentFile.name + ' could not be re-read (changed on disk?) — click Browse to re-select.';
+                if (agentsFile) agentsFile.value = '';
                 if (typeof console !== 'undefined') console.error(err);
             }
         });
