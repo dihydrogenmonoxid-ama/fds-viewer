@@ -560,6 +560,10 @@
 
                     <h4>Boundary &mdash; surface heatmaps on OBSTs</h4>
                     <p>Open a folder containing <code>.bf</code> files. Each surface patch is rendered as a textured quad over the corresponding OBST face. Same play/colour/range controls as slices.</p>
+
+                    <h4>Agents &mdash; JuPedSim trajectories</h4>
+                    <p>In the <strong>Agents</strong> panel, load a JuPedSim <code>.sqlite</code> trajectory to overlay evacuation agents on the scene. Agents are coloured by <strong>Speed</strong>, or by <strong>FED</strong> dose when the file carries an optional <code>agent_scalars(frame, id, fed, speed)</code> table. The overlay is <em>persistent</em> &mdash; it stays visible across the Soot/Slice/Boundary modes &mdash; and is time-synced to them: agents and smoke always show the same simulation second.</p>
+                    <p>Playback runs off the main timeline, so load a smoke, slice, or boundary set to drive the play button &mdash; or scrub the agent slider in the panel directly. The sqlite is produced by <a href="https://github.com/PedestrianDynamics/pyFDS-Evac" target="_blank" rel="noopener">pyFDS-Evac</a> with <code>--output-sqlite</code> (the base JuPedSim schema is read unchanged, so any trajectory sqlite works; without <code>agent_scalars</code>, agents are coloured by a speed derived from successive positions).</p>
                 </section>
 
                 <section class="help-page" data-help-page="shortcuts">
