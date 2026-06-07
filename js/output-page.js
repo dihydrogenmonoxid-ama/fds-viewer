@@ -24,6 +24,8 @@
     let smokePlaybackTimer = null;
     let boundaryOverlay = null;
     let boundaryPlaybackTimer = null;
+    let agentOverlay = null;
+    let agentFile = null;
     let mode = 'smoke'; // 'slice' | 'smoke' | 'boundary'
     // Module-level handle to wireModeToggle's inner applyMode so other
     // module functions (handleSimulationFolder) can re-run it without
@@ -273,6 +275,9 @@
         // Boundary (BNDF) controls
         wireBoundaryControls(viewer);
 
+        // Agent trajectory overlay controls
+        wireAgents(viewer);
+
         // Projection toggle (perspective / orthographic) — floating button
         // bottom-right of the output viewer canvas.
         const projBtn = document.getElementById('output-proj-toggle');
@@ -363,6 +368,7 @@
                 if (vpBtn)    vpBtn.disabled = n <= 1;
                 if (vpTime && sliceOverlay) vpTime.textContent = (currentDataset.frames[sliceOverlay.frameIndex]?.time || 0).toFixed(3) + ' s';
             }
+            syncAgents();
 
             // Pause playback for the modes that are no longer active
             if (mode !== 'slice') stopPlayback();
@@ -696,6 +702,7 @@
         playbackTimer = setInterval(() => {
             const next = (sliceOverlay.frameIndex + 1) % currentDataset.frames.length;
             sliceOverlay.setFrame(next);
+            syncAgents();
         }, 80);
     }
 
@@ -741,6 +748,7 @@
         if (frameSlider) frameSlider.addEventListener('input', () => {
             if (!sliceOverlay) return;
             sliceOverlay.setFrame((parseInt(frameSlider.value, 10) || 0));
+            syncAgents();
         });
 
         // Overlay play bar slider — dispatches to whichever mode is active
@@ -769,6 +777,7 @@
                 if (!sliceOverlay) return;
                 sliceOverlay.setFrame((parseInt(vpSlider.value, 10) || 0));
             }
+            syncAgents();
         });
 
         // Sidebar play button
@@ -837,7 +846,30 @@
     function ensureSmokeOverlay(viewer) {
         if (!smokeOverlay)
             smokeOverlay = new Smoke3DOverlay(viewer.scene, viewer.camera, viewer.controls, viewer.renderer);
+        if (!agentOverlay) agentOverlay = new AgentOverlay(viewer.scene);
         return smokeOverlay;
+    }
+
+    // The simulation time currently shown by the active smoke/slice/boundary overlay.
+    function activeDisplayTime() {
+        if (mode === 'smoke' && smokeOverlay && smokeOverlay.activeFrames.length) return smokeOverlay.currentTime();
+        if (mode === 'boundary' && boundaryOverlay && boundaryOverlay.activeFrames.length) return boundaryOverlay.currentTime();
+        if (mode === 'slice' && sliceOverlay && currentDataset && currentDataset.frames.length) {
+            const fr = currentDataset.frames[sliceOverlay.frameIndex];
+            return fr ? fr.time : 0;
+        }
+        return null;
+    }
+
+    // Keep agents on the same simulation second as the active overlay.
+    function syncAgents() {
+        if (!agentOverlay || !agentOverlay.dataset) return;
+        const t = activeDisplayTime();
+        if (t !== null) agentOverlay.setTime(t);
+        const slider = document.getElementById('output-agents-frame-slider');
+        const tlabel = document.getElementById('output-agents-time');
+        if (slider) slider.value = agentOverlay.frameIndex;
+        if (tlabel) tlabel.textContent = agentOverlay.currentTime().toFixed(3) + ' s';
     }
 
     // HRRPUV threshold helpers — convert between the slider's 0–255 byte
@@ -1045,6 +1077,7 @@
             if (readout)  readout.textContent = timeStr;
             if (vpSlider && mode === 'smoke') vpSlider.value       = next;
             if (vpTime   && mode === 'smoke') vpTime.textContent   = timeStr;
+            syncAgents();
         }, 220);
     }
 
@@ -1075,6 +1108,7 @@
             if (!smokeOverlay) return;
             smokeOverlay.setFrame(parseInt(slider.value, 10) || 0);
             if (readout) readout.textContent = smokeOverlay.currentTime().toFixed(3) + ' s';
+            syncAgents();
         });
 
         const playBtn = document.getElementById('output-smoke-play');
@@ -1346,6 +1380,7 @@
             if (vpSlider && mode === 'boundary') vpSlider.value       = next;
             if (vpTime   && mode === 'boundary') vpTime.textContent   = timeStr;
             refreshBoundaryColorbar();
+            syncAgents();
         }, 220);
     }
 
@@ -1373,6 +1408,7 @@
             boundaryOverlay.setFrame(parseInt(slider.value, 10) || 0);
             if (readout) readout.textContent = boundaryOverlay.currentTime().toFixed(3) + ' s';
             refreshBoundaryColorbar(); // _resolveRange runs per frame, so the bar can shift
+            syncAgents();
         });
 
         const playBtn = document.getElementById('output-boundary-play');
@@ -1491,6 +1527,122 @@
         } else {
             viewer.setClipPlanes(vals.x.mn, vals.x.mx, vals.y.mn, vals.y.mx, vals.z.mn, vals.z.mx);
             if (smokeOverlay) smokeOverlay.setClipBoundsFDS(vals.x.mn, vals.x.mx, vals.y.mn, vals.y.mx, vals.z.mn, vals.z.mx);
+        }
+    }
+
+    // ── Agent trajectory overlay ──────────────────────────────────────────
+    function wireAgents(viewer) {
+        const agentsFile = document.getElementById('output-agents-file');
+        const agentsReload = document.getElementById('output-agents-reload');
+
+        async function loadAgentTrajectory(file) {
+            const status = document.getElementById('output-agents-status');
+            if (status) status.textContent = 'Loading ' + file.name + '…';
+            const buf = await file.arrayBuffer();
+            const ds = await loadTrajectorySqlite(buf);
+            if (!agentOverlay) agentOverlay = new AgentOverlay(viewer.scene);
+            agentOverlay.load(ds);
+            populateAgentColorby(ds);
+            wireAgentControls(ds);
+            const t = activeDisplayTime();
+            if (t !== null) agentOverlay.setTime(t); else agentOverlay.setFrame(0);
+            drawAgentColorbar();
+            let maxAgents = 0;
+            for (const f of ds.frames) if (f.count > maxAgents) maxAgents = f.count;
+            if (status) status.textContent = file.name + ' — ' + ds.frames.length + ' frames, ' + maxAgents + ' agents max';
+        }
+
+        if (agentsFile) agentsFile.addEventListener('change', async (e) => {
+            const file = e.target.files && e.target.files[0];
+            if (!file) return;
+            agentFile = file;
+            try {
+                await loadAgentTrajectory(file);
+                if (agentsReload) agentsReload.disabled = false;
+            } catch (err) {
+                const status = document.getElementById('output-agents-status');
+                if (status) status.textContent = 'Error: ' + err.message;
+                if (typeof console !== 'undefined') console.error(err);
+            }
+        });
+
+        if (agentsReload) agentsReload.addEventListener('click', async () => {
+            if (!agentFile || agentsReload.disabled) return;
+            agentsReload.disabled = true;
+            agentsReload.textContent = 'Reloading…';
+            try {
+                await loadAgentTrajectory(agentFile);
+                const status = document.getElementById('output-agents-status');
+                if (status) status.textContent += ' · reloaded ' + new Date().toTimeString().slice(0, 8);
+                agentsReload.textContent = 'Reloaded ✓';
+                setTimeout(() => { agentsReload.textContent = 'Reload'; agentsReload.disabled = false; }, 1600);
+            } catch (err) {
+                const status = document.getElementById('output-agents-status');
+                if (status) status.textContent = agentFile.name + ' could not be re-read (changed on disk?) — click Browse to re-select.';
+                if (agentsFile) agentsFile.value = '';
+                agentsReload.textContent = 'Reload';
+                agentsReload.disabled = false;
+                if (typeof console !== 'undefined') console.error(err);
+            }
+        });
+    }
+
+    function populateAgentColorby(ds) {
+        const sel = document.getElementById('output-agents-colorby');
+        if (!sel) return;
+        const fedOpt = sel.querySelector('option[value="fed"]');
+        if (fedOpt) fedOpt.disabled = ds.quantities.indexOf('fed') < 0;
+        if (ds.quantities.indexOf(sel.value) < 0) sel.value = ds.quantities[0];
+        agentOverlay.setQuantity(sel.value);
+    }
+
+    function wireAgentControls(ds) {
+        const sel = document.getElementById('output-agents-colorby');
+        if (sel && !sel._wired) {
+            sel._wired = true;
+            sel.addEventListener('change', () => { agentOverlay.setQuantity(sel.value); drawAgentColorbar(); });
+        }
+        const op = document.getElementById('output-agents-opacity');
+        if (op && !op._wired) {
+            op._wired = true;
+            op.addEventListener('input', () => agentOverlay.setOpacity(parseFloat(op.value)));
+        }
+        const slider = document.getElementById('output-agents-frame-slider');
+        const tlabel = document.getElementById('output-agents-time');
+        if (slider) {
+            slider.min = 0;
+            slider.max = Math.max(0, ds.frames.length - 1);
+            slider.value = agentOverlay.frameIndex;
+            slider.disabled = ds.frames.length <= 1;
+            if (!slider._wired) {
+                slider._wired = true;
+                slider.addEventListener('input', () => {
+                    agentOverlay.setFrame(parseInt(slider.value, 10) || 0);
+                    if (tlabel) tlabel.textContent = agentOverlay.currentTime().toFixed(3) + ' s';
+                });
+            }
+        }
+    }
+
+    function drawAgentColorbar() {
+        const cv = document.getElementById('output-agents-colorbar');
+        if (!cv || !agentOverlay || !agentOverlay.dataset) return;
+        const ctx = cv.getContext('2d');
+        const q = agentOverlay.quantity;
+        const range = (window.QUANTITY_RANGE && window.QUANTITY_RANGE[q]) || (q === 'fed' ? [0, 1] : [0, 1.5]);
+        for (let px = 0; px < cv.width; px++) {
+            const val = range[0] + (range[1] - range[0]) * (px / (cv.width - 1));
+            const c = colorForValue(val, q);
+            ctx.fillStyle = 'rgb(' + (c.r * 255 | 0) + ',' + (c.g * 255 | 0) + ',' + (c.b * 255 | 0) + ')';
+            ctx.fillRect(px, 0, 1, cv.height);
+        }
+        const unit = (window.QUANTITY_UNIT && window.QUANTITY_UNIT[q]) || '';
+        const minEl = document.getElementById('output-agents-cbar-min');
+        const maxEl = document.getElementById('output-agents-cbar-max');
+        if (minEl) minEl.textContent = String(range[0]);
+        if (maxEl) {
+            const maxSuffix = unit ? ' ' + unit : (q === 'fed' ? ' (incapacitation)' : '');
+            maxEl.textContent = range[1] + maxSuffix;
         }
     }
 
