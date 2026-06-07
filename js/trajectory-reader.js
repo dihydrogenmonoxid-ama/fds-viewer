@@ -48,7 +48,7 @@ function buildTrajectoryDataset(meta, trajRows, scalarRows) {
                 f.speed[i] = speedByKey.get(k);
                 f.fed[i] = fedByKey.get(k);
             } else {
-                f.speed[i] = _derivedSpeed(frames, fi, i, fps);
+                f.speed[i] = _derivedSpeed(frames, fi, i);
                 if (hasScalars) f.fed[i] = 0;
             }
         }
@@ -76,7 +76,7 @@ function buildTrajectoryDataset(meta, trajRows, scalarRows) {
 }
 
 // Per-agent speed from successive positions when agent_scalars is absent.
-function _derivedSpeed(frames, fi, i, fps) {
+function _derivedSpeed(frames, fi, i) {
     'use strict';
     const id = frames[fi].ids[i];
     const prev = fi > 0 ? frames[fi - 1] : null;

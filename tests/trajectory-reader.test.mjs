@@ -41,4 +41,18 @@ const ds2 = build(meta, traj, []);
 assert.deepStrictEqual(ds2.quantities, ['speed']);
 assert.ok(Number.isFinite(ds2.frames[1].speed[0]));
 
+// derived-speed fallback (no agent_scalars): exact values + edge cases
+assert.deepStrictEqual(ds2.frames[0].speed, [0, 0]); // first frame -> 0
+assert.ok(Math.abs(ds2.frames[1].speed[0] - Math.hypot(4, 4)) < 1e-9); // moved (4,4) over dt=1
+
+const trajGap = [
+  { frame: 0, id: 1, pos_x: 0, pos_y: 0, ori_x: 1, ori_y: 0 },
+  { frame: 10, id: 1, pos_x: 0, pos_y: 0, ori_x: 1, ori_y: 0 },
+  { frame: 10, id: 9, pos_x: 0, pos_y: 0, ori_x: 1, ori_y: 0 },
+];
+const dsGap = build(meta, trajGap, []);
+const frGap = dsGap.frames[1];
+assert.strictEqual(frGap.speed[frGap.ids.indexOf(1)], 0); // present but didn't move
+assert.strictEqual(frGap.speed[frGap.ids.indexOf(9)], 0); // absent in previous frame
+
 console.log('trajectory-reader: all assertions passed');
