@@ -53,21 +53,7 @@ Point the **Output** page at a simulation folder once — the viewer auto-detect
 
 On the Output page, load a JuPedSim `.sqlite` (the **Agents** panel → choose file) to render evacuation agents as a 3D overlay over the smoke. Agents are coloured by **Speed** or, when the file carries an optional `agent_scalars(frame, id, fed, speed)` table, by **FED dose**. The overlay is time-synced to the smoke: both always show the same simulation second.
 
-The `.sqlite` is produced by **pyFDS-Evac** with `--output-sqlite` (the `agent_scalars` table is written when FED is computed). The base JuPedSim schema is read unchanged, so any JuPedSim trajectory `.sqlite` works — without `agent_scalars`, agents are coloured by a speed derived from successive positions.
-
-### Agents (JuPedSim trajectories)
-
-On the **Output** page, load a JuPedSim `.sqlite` (the "Agents" panel → choose
-file) to render evacuation agents as a 3D overlay over the smoke. Agents are
-coloured by **Speed** or, when the file carries an optional
-`agent_scalars(frame, id, fed, speed)` table, by **FED** dose. The overlay is
-time-synced to the smoke: both always show the same simulation second.
-
-The sqlite is produced by [pyFDS-Evac](https://github.com/PedestrianDynamics/pyFDS-Evac)
-with `--output-sqlite` (the `agent_scalars` table is written when FED is
-computed). The base JuPedSim schema is read unchanged, so any JuPedSim
-trajectory sqlite works — without `agent_scalars`, agents are coloured by a
-speed derived from successive positions.
+The `.sqlite` is produced by [pyFDS-Evac](https://github.com/PedestrianDynamics/pyFDS-Evac) with `--output-sqlite` (the `agent_scalars` table is written when FED is computed). The base JuPedSim schema is read unchanged, so any JuPedSim trajectory `.sqlite` works — without `agent_scalars`, agents are coloured by a speed derived from successive positions.
 
 ## Download
 
