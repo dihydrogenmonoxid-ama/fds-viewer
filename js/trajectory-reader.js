@@ -38,8 +38,12 @@ function buildTrajectoryDataset(meta, trajRows, scalarRows) {
         }
     }
 
+    // prevIndex maps id -> column index in the previous frame, rebuilt each
+    // iteration so derived speed is O(1) per agent instead of indexOf's O(n).
+    let prevIndex = null;
     for (let fi = 0; fi < frames.length; fi++) {
         const f = frames[fi];
+        const prev = fi > 0 ? frames[fi - 1] : null;
         f.speed = new Array(f.count);
         if (hasScalars) f.fed = new Array(f.count);
         for (let i = 0; i < f.count; i++) {
@@ -48,10 +52,12 @@ function buildTrajectoryDataset(meta, trajRows, scalarRows) {
                 f.speed[i] = speedByKey.get(k);
                 f.fed[i] = fedByKey.get(k);
             } else {
-                f.speed[i] = _derivedSpeed(frames, fi, i);
+                f.speed[i] = _derivedSpeed(f, prev, prevIndex, i);
                 if (hasScalars) f.fed[i] = 0;
             }
         }
+        prevIndex = new Map();
+        for (let i = 0; i < f.count; i++) prevIndex.set(f.ids[i], i);
     }
 
     const quantities = hasScalars ? ['fed', 'speed'] : ['speed'];
@@ -76,31 +82,39 @@ function buildTrajectoryDataset(meta, trajRows, scalarRows) {
 }
 
 // Per-agent speed from successive positions when agent_scalars is absent.
-function _derivedSpeed(frames, fi, i) {
+// prevIndex is the previous frame's id -> column index map.
+function _derivedSpeed(f, prev, prevIndex, i) {
     'use strict';
-    const id = frames[fi].ids[i];
-    const prev = fi > 0 ? frames[fi - 1] : null;
-    if (!prev) return 0;
-    const j = prev.ids.indexOf(id);
-    if (j < 0) return 0;
-    const dt = frames[fi].time - prev.time;
+    if (!prev || !prevIndex) return 0;
+    const j = prevIndex.get(f.ids[i]);
+    if (j === undefined) return 0;
+    const dt = f.time - prev.time;
     if (dt <= 0) return 0;
-    const dx = frames[fi].x[i] - prev.x[j];
-    const dy = frames[fi].y[i] - prev.y[j];
+    const dx = f.x[i] - prev.x[j];
+    const dy = f.y[i] - prev.y[j];
     return Math.hypot(dx, dy) / dt;
 }
 
 (function (global) {
     'use strict';
 
-    // Thin sql.js loader (browser only). Returns a dataset or throws.
-    async function loadTrajectorySqlite(arrayBuffer) {
+    // The WASM module is initialised once and reused across loads/reloads.
+    let sqlReady = null;
+    function getSql() {
         if (typeof initSqlJs !== 'function') {
             throw new Error('sql.js (initSqlJs) not loaded');
         }
-        const SQL = await initSqlJs({
-            locateFile: (f) => 'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/' + f,
-        });
+        if (!sqlReady) {
+            sqlReady = initSqlJs({
+                locateFile: (f) => 'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/' + f,
+            });
+        }
+        return sqlReady;
+    }
+
+    // Thin sql.js loader (browser only). Returns a dataset or throws.
+    async function loadTrajectorySqlite(arrayBuffer) {
+        const SQL = await getSql();
         const db = new SQL.Database(new Uint8Array(arrayBuffer));
         try {
             const meta = {};
@@ -120,9 +134,14 @@ function _derivedSpeed(frames, fi, i) {
     }
 
     function tableExists(db, name) {
-        const r = db.exec(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='" + name + "'");
-        return r.length > 0 && r[0].values.length > 0;
+        const stmt = db.prepare(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?");
+        try {
+            stmt.bind([name]);
+            return stmt.step();
+        } finally {
+            stmt.free();
+        }
     }
 
     function queryAll(db, sql) {

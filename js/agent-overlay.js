@@ -49,6 +49,7 @@ function colorForValue(value, quantity) {
             this.height = 0.9;
             this.radius = 0.25;
             this._color = new THREE.Color();
+            this._dummy = new THREE.Object3D();
         }
 
         get activeFrames() { return this.dataset ? this.dataset.frames : []; }
@@ -114,7 +115,7 @@ function colorForValue(value, quantity) {
             if (!this.mesh || !this.dataset) return;
             const f = this.dataset.frames[this.frameIndex];
             if (!f) return;
-            const dummy = new THREE.Object3D();
+            const dummy = this._dummy;
             const values = this.quantity === 'fed' ? f.fed : f.speed;
             for (let i = 0; i < f.count; i++) {
                 dummy.position.copy(fdsToScene(f.x[i], f.y[i], this.height));
@@ -125,10 +126,8 @@ function colorForValue(value, quantity) {
                 this._color.setRGB(c.r, c.g, c.b);
                 this.mesh.setColorAt(i, this._color);
             }
-            const zero = new THREE.Object3D();
-            zero.scale.set(0, 0, 0);
-            zero.updateMatrix();
-            for (let i = f.count; i < this.mesh.count; i++) this.mesh.setMatrixAt(i, zero.matrix);
+            // Only render the active agents; avoids the per-frame zero-fill loop.
+            this.mesh.count = f.count;
             this.mesh.instanceMatrix.needsUpdate = true;
             if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
         }

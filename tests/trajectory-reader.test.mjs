@@ -24,7 +24,7 @@ const ds = build(meta, traj, scalars);
 assert.deepStrictEqual(ds.frames.map(f => f.time), [0, 1]);
 assert.strictEqual(ds.frames[0].count, 2);
 assert.strictEqual(ds.frames[1].count, 1);
-assert.deepStrictEqual(ds.quantities.sort(), ['fed', 'speed']);
+assert.deepStrictEqual(ds.quantities.slice().sort(), ['fed', 'speed']);
 
 const f0 = ds.frames[0];
 const i = f0.ids.indexOf(1);
