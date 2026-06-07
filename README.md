@@ -35,6 +35,20 @@ Pure client-side - no installation, no build step, no backend. Parses FDS nameli
 
 **Quality of life.** Light & dark theme. Drag-and-drop or "Open File" - multiple files in the same session. Keyboard shortcuts: `W A S D` move, `Q E` up/down, arrows rotate, `1`-`6` canonical views, `0` iso, `R` reset.
 
+### Agents (JuPedSim trajectories)
+
+On the **Output** page, load a JuPedSim `.sqlite` (the "Agents" panel → choose
+file) to render evacuation agents as a 3D overlay over the smoke. Agents are
+coloured by **Speed** or, when the file carries an optional
+`agent_scalars(frame, id, fed, speed)` table, by **FED** dose. The overlay is
+time-synced to the smoke: both always show the same simulation second.
+
+The sqlite is produced by [pyFDS-Evac](https://github.com/PedestrianDynamics/pyFDS-Evac)
+with `--output-sqlite` (the `agent_scalars` table is written when FED is
+computed). The base JuPedSim schema is read unchanged, so any JuPedSim
+trajectory sqlite works — without `agent_scalars`, agents are coloured by a
+speed derived from successive positions.
+
 ## Download
 
 Download the [latest release zip](https://github.com/ProfRino/fds-viewer/releases/latest) - a clean zip with no git history (recommended). All releases with per-version download counts are listed at <https://github.com/ProfRino/fds-viewer/releases>. To follow development: `git clone https://github.com/ProfRino/fds-viewer.git`

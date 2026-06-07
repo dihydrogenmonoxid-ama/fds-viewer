@@ -1,7 +1,7 @@
 # Agents-in-fds-viewer: 3D agent overlay over FDS smoke
 
 **Date:** 2026-06-07
-**Status:** Design approved, pending spec review
+**Status:** Implemented (feat/agent-overlay) — verified end-to-end (pyFDS-Evac run → sqlite → fds-viewer render, time-sync confirmed).
 
 ## Goal
 
