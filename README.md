@@ -48,6 +48,8 @@ Point the **Output** page at a simulation folder once — the viewer auto-detect
 - **Slices** (`.sf`) — multi-mesh stitching with shared colormap
 - **Boundary patches** (`.bf`) — per-frame auto-range colorbar
 
+The Output page also accepts a JuPedSim `.sqlite` to overlay evacuation agents on the same scene — see [JuPedSim Output](#jupsedsim-output) below.
+
 **Navigation.** Standard orbit controls plus first-person **Walk mode** (W A S D, mouse-look, Shift run, Space jump, Esc exit) and an **orthographic / perspective** toggle in each 3D view. Per-axis clipping that doesn't cull edge geometry.
 
 ### JuPedSim Output
