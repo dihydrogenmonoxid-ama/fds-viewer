@@ -39,7 +39,6 @@ Plus a multi-page **Help / User Guide** with parameter equations and worked exam
 
 **Navigation.** Standard orbit controls plus first-person **Walk mode** (W A S D, mouse-look, Shift run, Space jump, Esc exit) and an **orthographic / perspective** toggle in each 3D view. Per-axis clipping that doesn't cull edge geometry.
 
-**Quality of life.** Light & dark theme. Drag-and-drop or "Open File" — multiple files in the same session. Keyboard shortcuts: `W A S D` move, `Q E` up/down, arrows rotate, `1`–`6` canonical views, `0` iso, `R` reset.
 
 ### FDS Output
 
