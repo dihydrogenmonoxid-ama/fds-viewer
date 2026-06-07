@@ -747,6 +747,7 @@
         if (frameSlider) frameSlider.addEventListener('input', () => {
             if (!sliceOverlay) return;
             sliceOverlay.setFrame((parseInt(frameSlider.value, 10) || 0));
+            syncAgents();
         });
 
         // Overlay play bar slider — dispatches to whichever mode is active
@@ -1106,6 +1107,7 @@
             if (!smokeOverlay) return;
             smokeOverlay.setFrame(parseInt(slider.value, 10) || 0);
             if (readout) readout.textContent = smokeOverlay.currentTime().toFixed(3) + ' s';
+            syncAgents();
         });
 
         const playBtn = document.getElementById('output-smoke-play');
@@ -1405,6 +1407,7 @@
             boundaryOverlay.setFrame(parseInt(slider.value, 10) || 0);
             if (readout) readout.textContent = boundaryOverlay.currentTime().toFixed(3) + ' s';
             refreshBoundaryColorbar(); // _resolveRange runs per frame, so the bar can shift
+            syncAgents();
         });
 
         const playBtn = document.getElementById('output-boundary-play');
