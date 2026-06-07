@@ -1105,6 +1105,26 @@
                     </div>
                 </div>
                 <!-- /Boundary controls -->
+
+                <!-- Agents overlay (always visible) -->
+                <div id="output-agents-panel" class="sidebar-section">
+                    <h3>Agents</h3>
+                    <input type="file" id="output-agents-file" accept=".sqlite,.db" />
+                    <div id="output-agents-status">No trajectory loaded.</div>
+                    <label class="field-label" for="output-agents-colorby">Colour by</label>
+                    <select id="output-agents-colorby">
+                        <option value="speed">Speed</option>
+                        <option value="fed">FED</option>
+                    </select>
+                    <canvas id="output-agents-colorbar" width="160" height="14"></canvas>
+                    <label class="field-label" for="output-agents-opacity">Opacity</label>
+                    <input type="range" id="output-agents-opacity" min="0.1" max="1" step="0.05" value="1" />
+                    <div class="inline-controls" style="margin-top:8px;">
+                        <input type="range" id="output-agents-frame-slider" min="0" max="0" value="0" disabled />
+                        <span id="output-agents-time" class="frame-readout">0.000 s</span>
+                    </div>
+                </div>
+                <!-- /Agents overlay -->
             </div>
         </div>
     </div>
@@ -1167,6 +1187,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
 
     <!-- Application Scripts -->
     <script src="js/sample-data.js?v=20260517p"></script>
@@ -1181,6 +1202,8 @@
     <script src="js/smoke3d-overlay.js?v=20260519AM"></script>
     <script src="js/boundary-reader.js?v=20260518a"></script>
     <script src="js/boundary-overlay.js?v=20260520H"></script>
+    <script src="js/trajectory-reader.js?v=20260607a"></script>
+    <script src="js/agent-overlay.js?v=20260607a"></script>
     <script src="js/output-page.js?v=20260520I"></script>
     <script src="js/app.js?v=20260520G"></script>
 </body>
