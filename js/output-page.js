@@ -1567,13 +1567,21 @@
         });
 
         if (agentsReload) agentsReload.addEventListener('click', async () => {
-            if (!agentFile) return;
+            if (!agentFile || agentsReload.disabled) return;
+            agentsReload.disabled = true;
+            agentsReload.textContent = 'Reloading…';
             try {
                 await loadAgentTrajectory(agentFile);
+                const status = document.getElementById('output-agents-status');
+                if (status) status.textContent += ' · reloaded ' + new Date().toTimeString().slice(0, 8);
+                agentsReload.textContent = 'Reloaded ✓';
+                setTimeout(() => { agentsReload.textContent = 'Reload'; agentsReload.disabled = false; }, 1600);
             } catch (err) {
                 const status = document.getElementById('output-agents-status');
                 if (status) status.textContent = agentFile.name + ' could not be re-read (changed on disk?) — click Browse to re-select.';
                 if (agentsFile) agentsFile.value = '';
+                agentsReload.textContent = 'Reload';
+                agentsReload.disabled = false;
                 if (typeof console !== 'undefined') console.error(err);
             }
         });
