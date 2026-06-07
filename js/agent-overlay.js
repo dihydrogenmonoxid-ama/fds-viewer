@@ -8,6 +8,8 @@
  */
 
 const QUANTITY_RANGE = { fed: [0, 1], speed: [0, 1.5] };
+// Display units for the colorbar scale. FED is a dimensionless dose (1 = incapacitation).
+const QUANTITY_UNIT = { fed: '', speed: 'm/s' };
 
 function normalizeQuantity(value, quantity) {
     const range = QUANTITY_RANGE[quantity] || [0, 1];
@@ -149,4 +151,6 @@ function colorForValue(value, quantity) {
     global.AgentOverlay = AgentOverlay;
     global.colorForValue = colorForValue;
     global.normalizeQuantity = normalizeQuantity;
+    global.QUANTITY_RANGE = QUANTITY_RANGE;
+    global.QUANTITY_UNIT = QUANTITY_UNIT;
 })(typeof window !== 'undefined' ? window : globalThis);

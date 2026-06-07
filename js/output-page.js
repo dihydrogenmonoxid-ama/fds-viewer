@@ -1599,12 +1599,20 @@
         if (!cv || !agentOverlay || !agentOverlay.dataset) return;
         const ctx = cv.getContext('2d');
         const q = agentOverlay.quantity;
-        const range = q === 'fed' ? [0, 1] : [0, 1.5];
+        const range = (window.QUANTITY_RANGE && window.QUANTITY_RANGE[q]) || (q === 'fed' ? [0, 1] : [0, 1.5]);
         for (let px = 0; px < cv.width; px++) {
             const val = range[0] + (range[1] - range[0]) * (px / (cv.width - 1));
             const c = colorForValue(val, q);
             ctx.fillStyle = 'rgb(' + (c.r * 255 | 0) + ',' + (c.g * 255 | 0) + ',' + (c.b * 255 | 0) + ')';
             ctx.fillRect(px, 0, 1, cv.height);
+        }
+        const unit = (window.QUANTITY_UNIT && window.QUANTITY_UNIT[q]) || '';
+        const minEl = document.getElementById('output-agents-cbar-min');
+        const maxEl = document.getElementById('output-agents-cbar-max');
+        if (minEl) minEl.textContent = String(range[0]);
+        if (maxEl) {
+            const maxSuffix = unit ? ' ' + unit : (q === 'fed' ? ' (incapacitation)' : '');
+            maxEl.textContent = range[1] + maxSuffix;
         }
     }
 
