@@ -24,16 +24,36 @@ and boundary (`.bf`) results without leaving the browser.
 
 ## Features
 
-Pure client-side - no installation, no build step, no backend. Parses FDS namelist input
-(`&MESH`, `&OBST`, `&VENT`, `&HOLE`, `&DEVC`, `&INIT`, `&GEOM`, `&HVAC`, `&ZONE`, `&SLCF`, `&SURF`, `&REAC`, `&MATL`, ...).
+Pure client-side — no installation, no build step, no backend.
 
-**Six pages.** Pre-run: **3D Geometry** (interactive Three.js scene with layer toggles, opacity, canonical views and click-to-inspect), **Mesh** (resolution, cell count, parallel-MPI breakdown), **Fire & Combustion** (burner HRR, reaction chemistry, materials), and **Code** (full `.fds` source with syntax highlighting and an in-browser linter catching 50+ rule violations). Post-run: **Output** (point at the simulation folder once, the viewer detects soot, slice and boundary data and lets you play back all three on the same 3D scene). And a multi-page **Help / User Guide** with parameter equations and worked examples.
+### FDS Input
 
-**Output visualization.** WebGL2 volume-rendered smoke (`.s3d`) with Basic and Solid-aware (depth-sampled) modes and user-tunable transfer functions for soot and HRRPUV. Multi-mesh slice (`.sf`) stitching with shared colormap. Boundary patches (`.bf`) with per-frame auto-range colorbar.
+Parses FDS namelist input (`&MESH`, `&OBST`, `&VENT`, `&HOLE`, `&DEVC`, `&INIT`, `&GEOM`, `&HVAC`, `&ZONE`, `&SLCF`, `&SURF`, `&REAC`, `&MATL`, ...) across four pre-run pages:
+
+- **3D Geometry** — interactive Three.js scene with layer toggles, opacity, canonical views and click-to-inspect
+- **Mesh** — resolution, cell count, parallel-MPI breakdown
+- **Fire & Combustion** — burner HRR, reaction chemistry, materials
+- **Code** — full `.fds` source with syntax highlighting and an in-browser linter catching 50+ rule violations
+
+Plus a multi-page **Help / User Guide** with parameter equations and worked examples.
 
 **Navigation.** Standard orbit controls plus first-person **Walk mode** (W A S D, mouse-look, Shift run, Space jump, Esc exit) and an **orthographic / perspective** toggle in each 3D view. Per-axis clipping that doesn't cull edge geometry.
 
-**Quality of life.** Light & dark theme. Drag-and-drop or "Open File" - multiple files in the same session. Keyboard shortcuts: `W A S D` move, `Q E` up/down, arrows rotate, `1`-`6` canonical views, `0` iso, `R` reset.
+**Quality of life.** Light & dark theme. Drag-and-drop or "Open File" — multiple files in the same session. Keyboard shortcuts: `W A S D` move, `Q E` up/down, arrows rotate, `1`–`6` canonical views, `0` iso, `R` reset.
+
+### FDS Output
+
+Point the **Output** page at a simulation folder once — the viewer auto-detects and plays back all post-run data on the same 3D scene:
+
+- **Smoke** (`.s3d`) — WebGL2 volume rendering with Basic and Solid-aware (depth-sampled) modes; user-tunable transfer functions for soot and HRRPUV
+- **Slices** (`.sf`) — multi-mesh stitching with shared colormap
+- **Boundary patches** (`.bf`) — per-frame auto-range colorbar
+
+### JuPedSim Output
+
+On the Output page, load a JuPedSim `.sqlite` (the **Agents** panel → choose file) to render evacuation agents as a 3D overlay over the smoke. Agents are coloured by **Speed** or, when the file carries an optional `agent_scalars(frame, id, fed, speed)` table, by **FED dose**. The overlay is time-synced to the smoke: both always show the same simulation second.
+
+The `.sqlite` is produced by **pyFDS-Evac** with `--output-sqlite` (the `agent_scalars` table is written when FED is computed). The base JuPedSim schema is read unchanged, so any JuPedSim trajectory `.sqlite` works — without `agent_scalars`, agents are coloured by a speed derived from successive positions.
 
 ### Agents (JuPedSim trajectories)
 
