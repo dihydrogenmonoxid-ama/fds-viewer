@@ -48,6 +48,8 @@ Point the **Output** page at a simulation folder once — the viewer auto-detect
 - **Slices** (`.sf`) — multi-mesh stitching with shared colormap
 - **Boundary patches** (`.bf`) — per-frame auto-range colorbar
 
+**Navigation.** Standard orbit controls plus first-person **Walk mode** (W A S D, mouse-look, Shift run, Space jump, Esc exit) and an **orthographic / perspective** toggle in each 3D view. Per-axis clipping that doesn't cull edge geometry.
+
 ### JuPedSim Output
 
 On the Output page, load a JuPedSim `.sqlite` (the **Agents** panel → choose file) to render evacuation agents as a 3D overlay over the smoke. Agents are coloured by **Speed** or, when the file carries an optional `agent_scalars(frame, id, fed, speed)` table, by **FED dose**. The overlay is time-synced to the smoke: both always show the same simulation second.
