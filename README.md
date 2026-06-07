@@ -54,7 +54,7 @@ The Output page also accepts a JuPedSim `.sqlite` to overlay evacuation agents o
 
 ### JuPedSim Output
 
-In the Output page **Soot** section, load a JuPedSim `.sqlite` (Agents panel → choose file) to overlay evacuation agents on the smoke:
+In the Output page **Soot** section, load a JuPedSim `.sqlite` (Agents panel) to overlay evacuation agents on the smoke:
 
 - **Speed** colouring by default; **FED dose** when the file carries an `agent_scalars` table (written by [pyFDS-Evac](https://github.com/PedestrianDynamics/pyFDS-Evac) with `--output-sqlite` — the table is written when FED is computed)
 - Time-synced to the smoke — both always show the same simulation second
