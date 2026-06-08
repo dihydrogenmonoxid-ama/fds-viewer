@@ -1,6 +1,6 @@
 /**
  * Charts Panel — FDS CSV time-series plotter
- * v20260522E
+ * v20260608A
  *
  * FDS CSV format (two header rows):
  *   Row 0 — units:    s,  °C,  kW, …
@@ -75,7 +75,7 @@
             const cells = splitRow(rows[r]);
             for (let c = 0; c < n; c++) {
                 let raw = (cells[c] || '').trim();
-                if (decComma) raw = raw.replace(',', '.');
+                if (decComma) raw = raw.replace(/,/g, '.');
                 const v = parseFloat(raw);
                 columns[c].push(isFinite(v) ? v : NaN);
             }
@@ -263,6 +263,14 @@
         const hasRight  = rightS.length > 0;
         const hasTitle  = !!ds.title;
 
+        // Update mixed-units warning badge
+        const rightUnits = [...new Set(rightS.map(s => s.unit).filter(Boolean))];
+        const hasMixedRight = hasRight && rightUnits.length > 1;
+        const _wrap2 = ds.canvas ? ds.canvas.parentElement : null;
+        const _card  = _wrap2 && _wrap2.closest ? _wrap2.closest('.chart-card') : null;
+        const _warnEl = _card ? _card.querySelector('.chart-mixed-warn') : null;
+        if (_warnEl) _warnEl.style.display = hasMixedRight ? '' : 'none';
+
         if (allSeries.length === 0) {
             ctx.fillStyle = fg; ctx.font = `13px ${FONT}`;
             ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -398,7 +406,8 @@
             ctx.setLineDash(getDash(s.lineStyle));
             let first = true;
             const n = Math.min(s.time.length, s.values.length);
-            for (let i = 0; i < n; i++) {
+            const st = Math.max(1, Math.ceil(n / 5000));
+            for (let i = 0; i < n; i += st) {
                 if (!isFinite(s.time[i]) || !isFinite(s.values[i])) { first = true; continue; }
                 const px = tx(s.time[i]), py = ty(s.values[i]);
                 if (first) { ctx.moveTo(px, py); first = false; } else ctx.lineTo(px, py);
@@ -414,7 +423,8 @@
                 ctx.setLineDash(getDash(s.lineStyle));
                 let first = true;
                 const n = Math.min(s.time.length, s.values.length);
-                for (let i = 0; i < n; i++) {
+                const st = Math.max(1, Math.ceil(n / 5000));
+                for (let i = 0; i < n; i += st) {
                     if (!isFinite(s.time[i]) || !isFinite(s.values[i])) { first = true; continue; }
                     const px = tx(s.time[i]), py = ty2(s.values[i]);
                     if (first) { ctx.moveTo(px, py); first = false; } else ctx.lineTo(px, py);
@@ -523,6 +533,9 @@
                         '<label><input type="checkbox" class="opt-watermark" checked> Watermark</label>' +
                     '</div>' +
                 '</div>' +
+            '</div>' +
+            '<div class="chart-mixed-warn" style="display:none;">' +
+                '&#9888; Right Y-axis shows mixed units &mdash; channels share one scale' +
             '</div>' +
             '<div class="chart-canvas-wrap">' +
                 '<canvas></canvas>' +
@@ -774,7 +787,8 @@
         for (const s of leftS) {
             let d = '', first = true;
             const n = Math.min(s.time.length, s.values.length);
-            for (let i = 0; i < n; i++) {
+            const st = Math.max(1, Math.ceil(n / 5000));
+            for (let i = 0; i < n; i += st) {
                 if (!isFinite(s.time[i]) || !isFinite(s.values[i])) { first = true; continue; }
                 const px = tx(s.time[i]).toFixed(2), py = ty(s.values[i]).toFixed(2);
                 d += first ? `M ${px},${py}` : ` L ${px},${py}`;
@@ -791,7 +805,8 @@
             for (const s of rightS) {
                 let d = '', first = true;
                 const n = Math.min(s.time.length, s.values.length);
-                for (let i = 0; i < n; i++) {
+                const st = Math.max(1, Math.ceil(n / 5000));
+                for (let i = 0; i < n; i += st) {
                     if (!isFinite(s.time[i]) || !isFinite(s.values[i])) { first = true; continue; }
                     const px = tx(s.time[i]).toFixed(2), py = ty2(s.values[i]).toFixed(2);
                     d += first ? `M ${px},${py}` : ` L ${px},${py}`;

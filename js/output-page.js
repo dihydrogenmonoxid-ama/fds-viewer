@@ -26,7 +26,7 @@
     let boundaryPlaybackTimer = null;
     let agentOverlay = null;
     let agentFile = null;
-    let mode = 'smoke'; // 'slice' | 'smoke' | 'boundary'
+    let mode = 'smoke'; // 'slice' | 'smoke' | 'boundary' | 'charts'
     // Module-level handle to wireModeToggle's inner applyMode so other
     // module functions (handleSimulationFolder) can re-run it without
     // refactoring it out of the closure.
@@ -121,6 +121,18 @@
      */
     window.outputPageDeactivate = function () {
         if (outputViewer && outputViewer.walkMode) outputViewer.exitWalkMode();
+        // Hide charts panel and reset mode button so on re-entry we start fresh
+        const cp = document.getElementById('charts-panel');
+        if (cp) cp.classList.remove('active');
+        const cb = document.getElementById('charts-back-btn');
+        if (cb) cb.style.display = 'none';
+        const chartsBtn = document.getElementById('output-mode-charts');
+        if (chartsBtn) chartsBtn.classList.remove('active');
+        if (mode === 'charts') {
+            mode = 'smoke';
+            const smokeBtn = document.getElementById('output-mode-smoke');
+            if (smokeBtn) smokeBtn.classList.add('active');
+        }
     };
 
     /**
@@ -297,14 +309,17 @@
         }
     }
 
-    // ── Mode toggle (Slice / Smoke / Boundary) ─────────────────────────────
+    // ── Mode toggle (Slice / Smoke / Boundary / Charts) ───────────────────
     function wireModeToggle(viewer) {
         const sliceBtn = document.getElementById('output-mode-slice');
         const smokeBtn = document.getElementById('output-mode-smoke');
         const boundaryBtn = document.getElementById('output-mode-boundary');
+        const chartsBtn = document.getElementById('output-mode-charts');
         const slicePanel = document.getElementById('output-slice-controls');
         const smokePanel = document.getElementById('output-smoke-controls');
         const boundaryPanel = document.getElementById('output-boundary-controls');
+        const chartsPanel = document.getElementById('charts-panel');
+        const chartsBackBtn = document.getElementById('charts-back-btn');
         if (!sliceBtn || !smokeBtn) return;
 
         function applyMode(next) {
@@ -312,9 +327,19 @@
             sliceBtn.classList.toggle('active', mode === 'slice');
             smokeBtn.classList.toggle('active', mode === 'smoke');
             if (boundaryBtn) boundaryBtn.classList.toggle('active', mode === 'boundary');
-            if (slicePanel) slicePanel.style.display = mode === 'slice' ? '' : 'none';
-            if (smokePanel) smokePanel.style.display = mode === 'smoke' ? '' : 'none';
+            if (chartsBtn)   chartsBtn.classList.toggle('active', mode === 'charts');
+            if (slicePanel)    slicePanel.style.display    = mode === 'slice'    ? '' : 'none';
+            if (smokePanel)    smokePanel.style.display    = mode === 'smoke'    ? '' : 'none';
             if (boundaryPanel) boundaryPanel.style.display = mode === 'boundary' ? '' : 'none';
+
+            // Charts panel covers the output layout when active
+            if (chartsPanel) {
+                chartsPanel.classList.toggle('active', mode === 'charts');
+                if (chartsBackBtn) chartsBackBtn.style.display = mode === 'charts' ? '' : 'none';
+                if (mode === 'charts' && typeof window.buildChartsPanel === 'function') {
+                    window.buildChartsPanel();
+                }
+            }
 
             // Hide the inactive overlay; keep colours intact
             if (sliceOverlay) {
@@ -379,6 +404,8 @@
         sliceBtn.addEventListener('click', () => applyMode('slice'));
         smokeBtn.addEventListener('click', () => applyMode('smoke'));
         if (boundaryBtn) boundaryBtn.addEventListener('click', () => applyMode('boundary'));
+        if (chartsBtn)   chartsBtn.addEventListener('click', () => applyMode('charts'));
+        if (chartsBackBtn) chartsBackBtn.addEventListener('click', () => applyMode('smoke'));
 
         // Expose to module scope so handleSimulationFolder can replay the
         // current-mode setup after the slice auto-load mucks with the

@@ -97,7 +97,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `#charts-cards-list`; Options section added above Channels in sidebar.
 - `js/app.js`: `activatePage()` handles the new `charts` page,
   calling `buildChartsPanel()` on first activation.
-- `js/charts-panel.js`: version bumped to `20260522D`.
+- `js/charts-panel.js`: version bumped to `20260522E`.
 - Cache-busting version strings bumped for all modified files
   (`app.js`, `fire-panel.js`) to `20260522A`.
 

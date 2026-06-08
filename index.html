@@ -28,7 +28,6 @@
             <button class="page-tab" data-page="mesh">Mesh</button>
             <button class="page-tab" data-page="fire">Fire &amp; Combustion</button>
             <button class="page-tab" data-page="code">Code</button>
-            <button class="page-tab" data-page="charts">Charts</button>
             <button class="page-tab" data-page="output">Output</button>
             <button class="page-tab" data-page="help" title="User guide">Help</button>
         </div>
@@ -354,35 +353,6 @@
         </div>
     </div>
 
-    <!-- Charts Panel -->
-    <div id="charts-panel">
-        <div class="charts-layout">
-            <!-- Left sidebar: file loader + channel selector (options are per-card) -->
-            <div class="charts-sidebar">
-                <div class="sidebar-section">
-                    <h3>Load CSV</h3>
-                    <label class="file-button primary-file-button" for="charts-file-input">Open CSV file(s)</label>
-                    <input id="charts-file-input" type="file" accept=".csv" multiple hidden>
-                    <p class="charts-hint">Accepts FDS output files:<br>
-                        <code>CHID_devc.csv</code>, <code>CHID_hrr.csv</code>, etc.<br>
-                        Options (decimal, grid, labels, watermark) are set per chart via the ⚙ button.</p>
-                </div>
-                <div class="sidebar-section charts-ch-section">
-                    <h3>Channels</h3>
-                    <div id="charts-channel-list">
-                        <p class="charts-empty-msg">Open a CSV file to see channels.</p>
-                    </div>
-                </div>
-            </div>
-            <!-- Right: per-dataset chart cards -->
-            <div class="charts-main">
-                <div id="charts-cards-list" class="charts-cards-list">
-                    <p class="charts-empty-cards-msg">Open a CSV file to plot data.</p>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <!-- Help / User Guide Panel — multi-page wizard style -->
     <div id="help-panel">
         <div class="help-scroll">
@@ -394,8 +364,8 @@
                     <li><button type="button" class="help-nav-link" data-help-page="mesh">Mesh</button></li>
                     <li><button type="button" class="help-nav-link" data-help-page="fire">Fire &amp; Combustion</button></li>
                     <li><button type="button" class="help-nav-link" data-help-page="code">Code</button></li>
-                    <li><button type="button" class="help-nav-link" data-help-page="charts">Charts</button></li>
                     <li><button type="button" class="help-nav-link" data-help-page="output">Output</button></li>
+                    <li><button type="button" class="help-nav-link" data-help-page="charts">Charts (Output)</button></li>
                     <li><button type="button" class="help-nav-link" data-help-page="shortcuts">Keyboard shortcuts</button></li>
                     <li><button type="button" class="help-nav-link" data-help-page="troubleshoot">Troubleshooting</button></li>
                 </ul>
@@ -475,11 +445,11 @@
 
                 <section class="help-page" data-help-page="charts">
                     <h3>Charts</h3>
-                    <p>The Charts tab plots FDS CSV output files as interactive time-series charts. It works independently &mdash; no <code>.fds</code> file needs to be loaded first.</p>
+                    <p>The Charts plotter is accessible from the <strong>Output</strong> tab by clicking the <strong>Charts</strong> button in the Data panel on the right sidebar. It plots FDS CSV output files as interactive time-series charts and works independently &mdash; no <code>.fds</code> file needs to be loaded first.</p>
 
                     <h4>Getting started</h4>
                     <ol>
-                        <li>Click <strong>Open CSV file(s)</strong> in the left sidebar, or drag and drop one or more CSV files into the Charts view. Multiple files can be open at the same time.</li>
+                        <li>Go to the <strong>Output</strong> tab and click <strong>Charts</strong> in the Data panel. Then click <strong>Open CSV file(s)</strong> in the left sidebar, or drag and drop one or more CSV files anywhere in the app. Multiple files can be open at the same time.</li>
                         <li>Supported format: any FDS CSV file with two header rows (row 1 = units, row 2 = channel names) &mdash; e.g. <code>CHID_devc.csv</code>, <code>CHID_hrr.csv</code>.</li>
                         <li>Each loaded file gets its own chart card in the main area. Channels from all files are listed together in the left sidebar.</li>
                     </ol>
@@ -707,6 +677,39 @@
 
     <!-- Output Panel -->
     <div id="output-panel">
+
+        <!-- Charts sub-panel (shown when Charts mode is active in Output) -->
+        <div id="charts-panel">
+            <div class="charts-layout">
+                <!-- Left sidebar: file loader + channel selector -->
+                <div class="charts-sidebar">
+                    <div class="sidebar-section charts-back-section">
+                        <button id="charts-back-btn" class="fp-copy-btn" style="display:none;">&#8592; Back to Output</button>
+                    </div>
+                    <div class="sidebar-section">
+                        <h3>Load CSV</h3>
+                        <label class="file-button primary-file-button" for="charts-file-input">Open CSV file(s)</label>
+                        <input id="charts-file-input" type="file" accept=".csv" multiple hidden>
+                        <p class="charts-hint">Accepts FDS output files:<br>
+                            <code>CHID_devc.csv</code>, <code>CHID_hrr.csv</code>, etc.<br>
+                            Drop CSV files anywhere to load them. Options (decimal, grid, labels, watermark) are set per chart via the &#x2699; button.</p>
+                    </div>
+                    <div class="sidebar-section charts-ch-section">
+                        <h3>Channels</h3>
+                        <div id="charts-channel-list">
+                            <p class="charts-empty-msg">Open a CSV file to see channels.</p>
+                        </div>
+                    </div>
+                </div>
+                <!-- Right: per-dataset chart cards -->
+                <div class="charts-main">
+                    <div id="charts-cards-list" class="charts-cards-list">
+                        <p class="charts-empty-cards-msg">Open a CSV file to plot data.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="output-layout">
             <!-- Left Sidebar: Layers + Camera -->
             <div class="output-sidebar output-sidebar-left">
@@ -924,6 +927,7 @@
                         <button class="view-btn active" id="output-mode-smoke">Soot</button>
                         <button class="view-btn" id="output-mode-slice">Slice</button>
                         <button class="view-btn" id="output-mode-boundary">Boundary</button>
+                        <button class="view-btn" id="output-mode-charts">Charts</button>
                     </div>
                 </div>
 
@@ -1291,10 +1295,10 @@
     <script src="js/boundary-reader.js?v=20260518a"></script>
     <script src="js/boundary-overlay.js?v=20260520H"></script>
     <script src="js/fds-out-parser.js?v=20260522A"></script>
-    <script src="js/charts-panel.js?v=20260522E"></script>
+    <script src="js/charts-panel.js?v=20260608A"></script>
     <script src="js/trajectory-reader.js?v=20260607a"></script>
     <script src="js/agent-overlay.js?v=20260607b"></script>
-    <script src="js/output-page.js?v=20260607d"></script>
-    <script src="js/app.js?v=20260607d"></script>
+    <script src="js/output-page.js?v=20260608A"></script>
+    <script src="js/app.js?v=20260608A"></script>
 </body>
 </html>

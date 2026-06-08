@@ -3092,16 +3092,26 @@ kbd {
 
 #charts-panel {
     display: none;
-    position: fixed;
-    top: 48px;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    position: absolute;
+    inset: 0;
     background: var(--bg-primary);
-    z-index: 10;
+    z-index: 2;
     overflow: hidden;
 }
 #charts-panel.active { display: block; }
+
+.charts-back-section { padding-bottom: 0 !important; }
+#charts-back-btn { width: 100%; text-align: left; margin-bottom: 4px; }
+
+.chart-mixed-warn {
+    background: rgba(255, 150, 0, 0.12);
+    border: 1px solid rgba(255, 150, 0, 0.4);
+    border-radius: 4px;
+    color: #ffb347;
+    font-size: 11px;
+    padding: 5px 10px;
+    margin: 0 12px 6px;
+}
 
 .charts-layout {
     display: flex;
