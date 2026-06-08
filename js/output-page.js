@@ -332,6 +332,9 @@
             if (smokePanel)    smokePanel.style.display    = mode === 'smoke'    ? '' : 'none';
             if (boundaryPanel) boundaryPanel.style.display = mode === 'boundary' ? '' : 'none';
 
+            const mainArea = document.querySelector('.output-main-area');
+            if (mainArea) mainArea.style.display = mode === 'charts' ? 'none' : '';
+
             // Charts panel covers the output layout when active
             if (chartsPanel) {
                 chartsPanel.classList.toggle('active', mode === 'charts');
