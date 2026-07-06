@@ -101,6 +101,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Cache-busting version strings bumped for all modified files
   (`app.js`, `fire-panel.js`) to `20260522A`.
 
+### Fixed
+
+- **Charts mode navigation** — `#charts-panel` was an absolutely positioned
+  full-page overlay that covered the Output tab's right-hand Data panel
+  (including the Slice/Soot/Boundary/Charts mode buttons), so switching out
+  of Charts mode required a bespoke "← Back to Output" button.
+  - `#charts-panel` is now a normal grid item inside `.output-layout`,
+    spanning the left-sidebar + 3D-viewport columns only; the right Data
+    panel (and its mode buttons) stays visible and clickable at all times.
+  - "Open CSV file(s)" moved from Charts' own duplicate sidebar into a new
+    `#output-charts-controls` section in the Data panel, alongside the
+    existing Slice/Smoke/Boundary "Open simulation folder" controls.
+  - Removed the now-unnecessary `#charts-back-btn` — switching away from
+    Charts mode uses the same Soot/Slice/Boundary buttons as every other
+    mode.
+  - `js/output-page.js`: version bumped to `20260705A`.
+
 ---
 
 ## [2.0.0] — 2026-05-17

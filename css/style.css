@@ -3092,16 +3092,13 @@ kbd {
 
 #charts-panel {
     display: none;
-    position: absolute;
-    inset: 0;
+    position: relative;
+    grid-column: 1 / 3;
+    grid-row: 1;
     background: var(--bg-primary);
-    z-index: 2;
     overflow: hidden;
 }
 #charts-panel.active { display: block; }
-
-.charts-back-section { padding-bottom: 0 !important; }
-#charts-back-btn { width: 100%; text-align: left; margin-bottom: 4px; }
 
 .chart-mixed-warn {
     background: rgba(255, 150, 0, 0.12);
