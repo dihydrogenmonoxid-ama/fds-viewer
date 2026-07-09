@@ -318,6 +318,7 @@
         const smokePanel = document.getElementById('output-smoke-controls');
         const boundaryPanel = document.getElementById('output-boundary-controls');
         const chartsControlsPanel = document.getElementById('output-charts-controls');
+        const agentsPanel = document.getElementById('output-agents-panel');
         const chartsPanel = document.getElementById('charts-panel');
         const sidebarLeft = document.querySelector('.output-sidebar-left');
         if (!sliceBtn || !smokeBtn) return;
@@ -332,6 +333,10 @@
             if (smokePanel)          smokePanel.style.display          = mode === 'smoke'    ? '' : 'none';
             if (boundaryPanel)       boundaryPanel.style.display       = mode === 'boundary' ? '' : 'none';
             if (chartsControlsPanel) chartsControlsPanel.style.display = mode === 'charts'   ? '' : 'none';
+            // Agents overlay is a 3D-scene control; it stays visible across
+            // Soot/Slice/Boundary but makes no sense while Charts (2D CSV
+            // plotting) has hidden the 3D viewport entirely.
+            if (agentsPanel) agentsPanel.style.display = mode === 'charts' ? 'none' : '';
 
             // Left sidebar (Layers/Camera/Walk/Background) and the 3D
             // viewport are meaningless while Charts mode is active — hide

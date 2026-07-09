@@ -118,6 +118,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     mode.
   - `js/output-page.js`: version bumped to `20260705A`.
 
+- **Charts channel line-width control** (PR #1 review feedback) — the
+  per-channel width field (`.charts-ch-width`) was a plain
+  `<input type="number">` with hidden spinner arrows next to the line-style
+  dropdown, defaulting to the non-obvious value `1.8` (not aligned to its
+  own `step="0.5"` grid), so it looked like static text and gave no
+  click/selection affordance.
+  - Converted to a `<select>` with fixed options `1`/`2`/`3`/`4`/`5`,
+    mirroring the existing line-style dropdown exactly.
+  - Default width changed from `1.8` to `2` everywhere it's assigned.
+  - Existing non-default widths (e.g. a channel previously set to `3`)
+    are preserved as the `<select>`'s pre-selected option.
+  - `js/charts-panel.js`, `css/style.css`: version bumped to `20260709A`.
+
+- **Agents overlay shown in Charts mode** (PR #1 review feedback) —
+  `#output-agents-panel` was a permanently-visible sidebar section (never
+  gated by `applyMode()`), so it rendered underneath the Charts "Load CSV"
+  controls even though Charts mode hides the 3D viewport the Agents
+  overlay depends on.
+  - `applyMode()` now hides `#output-agents-panel` when `mode === 'charts'`,
+    same as the other mode-specific panels; it remains visible and
+    functional across Soot/Slice/Boundary as originally intended.
+  - `js/output-page.js`: version bumped to `20260709A`.
+
 ---
 
 ## [2.0.0] — 2026-05-17

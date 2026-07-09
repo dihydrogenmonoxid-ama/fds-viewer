@@ -3227,7 +3227,7 @@ kbd {
 }
 .charts-ch-style:focus { border-color: var(--accent); outline: none; }
 
-/* Line width number input */
+/* Line width select */
 .charts-ch-width {
     font-family: inherit;
     font-size: 10px;
@@ -3235,14 +3235,12 @@ kbd {
     border: 1px solid var(--border);
     border-radius: 3px;
     color: var(--text-primary);
-    padding: 1px 3px;
-    width: 36px;
+    padding: 1px 2px;
+    width: 40px;
     flex-shrink: 0;
     text-align: center;
-    -moz-appearance: textfield;
+    cursor: pointer;
 }
-.charts-ch-width::-webkit-inner-spin-button,
-.charts-ch-width::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .charts-ch-width:focus { border-color: var(--accent); outline: none; }
 
 .charts-ch-item input[type="checkbox"] {

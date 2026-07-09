@@ -124,7 +124,7 @@
             const key = ds.id + '::' + i;
             if (!colorMap[key])     { colorMap[key]     = PALETTE[colorCounter % PALETTE.length]; colorCounter++; }
             if (!lineStyleMap[key]) lineStyleMap[key]   = 'solid';
-            if (!lineWidthMap[key]) lineWidthMap[key]   = 1.8;
+            if (!lineWidthMap[key]) lineWidthMap[key]   = 2;
             if (n < 10) { selectedKeys.add(key); n++; }
         }
         buildDatasetCard(ds);
@@ -197,7 +197,7 @@
             out.push({ key,
                        color:     colorMap[key]     || '#888',
                        lineStyle: lineStyleMap[key] || 'solid',
-                       lineWidth: lineWidthMap[key] || 1.8,
+                       lineWidth: lineWidthMap[key] || 2,
                        label:     ds.headers[i],
                        unit:      ds.units[i] || '',
                        time:      ds.columns[0],
@@ -967,7 +967,7 @@
             for (let i = 1; i < ds.headers.length; i++) {
                 const key   = ds.id + '::' + i;
                 const style = lineStyleMap[key] || 'solid';
-                const width = lineWidthMap[key] || 1.8;
+                const width = lineWidthMap[key] || 2;
                 const selOpts = [
                     ['solid',   '———'],   // ———
                     ['dashed',  '- - -'],
@@ -976,11 +976,14 @@
                 ].map(([v, lbl]) =>
                     '<option value="' + v + '"' + (style === v ? ' selected' : '') + '>' + lbl + '</option>'
                 ).join('');
+                const widthOpts = [1, 2, 3, 4, 5].map(v =>
+                    '<option value="' + v + '"' + (width === v ? ' selected' : '') + '>' + v + '</option>'
+                ).join('');
                 html += '<div class="charts-ch-item">' +
                     '<input type="checkbox" class="charts-ch-check" data-key="' + key + '" ' + (selectedKeys.has(key) ? 'checked' : '') + '>' +
                     '<span class="charts-ch-swatch" data-key="' + key + '" style="background:' + (colorMap[key] || '#888') + '" title="Click to change colour"></span>' +
                     '<select class="charts-ch-style" data-key="' + key + '">' + selOpts + '</select>' +
-                    '<input type="number" class="charts-ch-width" data-key="' + key + '" min="0.5" max="5" step="0.5" value="' + width + '">' +
+                    '<select class="charts-ch-width" data-key="' + key + '" title="Line width">' + widthOpts + '</select>' +
                     '<span class="charts-ch-label">' + esc(ds.headers[i]) + '</span>' +
                     (ds.units[i] ? '<span class="charts-ch-unit">' + esc(ds.units[i]) + '</span>' : '') +
                     '</div>';
@@ -1004,13 +1007,10 @@
                 scheduleAll();
             });
         });
-        box.querySelectorAll('.charts-ch-width').forEach(inp => {
-            inp.addEventListener('input', () => {
-                const v = parseFloat(inp.value);
-                if (isFinite(v) && v >= 0.5 && v <= 5) {
-                    lineWidthMap[inp.dataset.key] = v;
-                    scheduleAll();
-                }
+        box.querySelectorAll('.charts-ch-width').forEach(sel => {
+            sel.addEventListener('change', () => {
+                lineWidthMap[sel.dataset.key] = parseFloat(sel.value);
+                scheduleAll();
             });
         });
         box.querySelectorAll('.charts-ds-remove').forEach(btn => {
@@ -1039,7 +1039,7 @@
                         selectedKeys.add(key);
                         if (!colorMap[key])     { colorMap[key]     = PALETTE[colorCounter % PALETTE.length]; colorCounter++; }
                         if (!lineStyleMap[key]) lineStyleMap[key]   = 'solid';
-                        if (!lineWidthMap[key]) lineWidthMap[key]   = 1.8;
+                        if (!lineWidthMap[key]) lineWidthMap[key]   = 2;
                     } else selectedKeys.delete(key);
                 }
                 rebuildChannelList();
